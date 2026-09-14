@@ -1,0 +1,24 @@
+# build output
+/bin/
+/dist/
+*.test
+*.out
+encryl-spike
+uring-spike
+ktls-spike
+
+# profiles and benchmark artifacts
+*.prof
+*.pprof
+*.svg
+docs/benchmarks/raw/
+
+# tooling
+/node_modules/
+.claude/
+.DS_Store
+
+# local environment
+.env
+.envrc
+/chat
