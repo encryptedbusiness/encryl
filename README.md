@@ -11,11 +11,13 @@ server.
 
 ## Status
 
-Skeleton. The module, license, and build files are in place; the runtime does not exist yet.
+The first transport slices are in place. The io_uring reactor and public server come next.
 
 ## What exists
 
-Only the module, license, and build files.
+| Package | Role |
+| ------- | ---- |
+| `internal/fnv` | FNV-1a 32-bit hash shared by event names and room sharding |
 
 ## Shape
 
