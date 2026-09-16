@@ -18,6 +18,7 @@ The first transport slices are in place. The io_uring reactor and public server 
 | Package | Role |
 | ------- | ---- |
 | `internal/fnv` | FNV-1a 32-bit hash shared by event names and room sharding |
+| `ws` | RFC 6455 frame parser: masking, fragmentation, control frames, limits |
 
 ## Shape
 
