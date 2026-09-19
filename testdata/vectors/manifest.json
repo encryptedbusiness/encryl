@@ -1,0 +1,42 @@
+{
+  "envelopeVersion": 2,
+  "headerBytes": 16,
+  "byteOrder": "big-endian",
+  "vectors": [
+    {
+      "name": "event-1024",
+      "file": "event-1024.hex",
+      "kind": 2,
+      "kindName": "EVENT",
+      "flags": 0,
+      "eventID": 1024,
+      "requestID": "72623859790382856",
+      "payloadUTF8": "hi",
+      "totalBytes": 18
+    },
+    {
+      "name": "auth-bearer-abc",
+      "file": "auth-bearer-abc.hex",
+      "kind": 1,
+      "kindName": "AUTH",
+      "flags": 0,
+      "eventID": 0,
+      "requestID": "1",
+      "payloadHex": "01616263",
+      "payloadNote": "scheme=1 (bearer), token=\"abc\"",
+      "totalBytes": 20
+    },
+    {
+      "name": "ack-1024",
+      "file": "ack-1024.hex",
+      "kind": 3,
+      "kindName": "ACK",
+      "flags": 2,
+      "flagsNote": "RESPONSE",
+      "eventID": 1024,
+      "requestID": "72623859790382856",
+      "payloadHex": "",
+      "totalBytes": 16
+    }
+  ]
+}
