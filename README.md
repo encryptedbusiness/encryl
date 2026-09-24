@@ -22,6 +22,7 @@ The portable core slices are in place. The io_uring backend and public server co
 | `httpx` | Incremental HTTP/1.1 upgrade parser: request line, headers, limits |
 | `event` | 16-byte envelope, flags, ACK tokens, event kinds |
 | `connslab` | Chunked slot table, lifecycle state machine, bounded write queue |
+| `room` | Sharded directory, Self-Room resolver, encode-once fan-out planner |
 
 ## Shape
 
