@@ -23,6 +23,7 @@ The portable core slices are in place. The io_uring backend and public server co
 | `event` | 16-byte envelope, flags, ACK tokens, event kinds |
 | `connslab` | Chunked slot table, lifecycle state machine, bounded write queue |
 | `room` | Sharded directory, Self-Room resolver, encode-once fan-out planner |
+| `timerwheel` | Hierarchical deadlines for handshake, idle, ping, and close |
 
 ## Shape
 
