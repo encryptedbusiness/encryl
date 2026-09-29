@@ -11,7 +11,7 @@ server.
 
 ## Status
 
-The portable core slices are in place. The io_uring backend and public server come next.
+The kernel layer is in place. The reactor and public server come next.
 
 ## What exists
 
@@ -24,6 +24,7 @@ The portable core slices are in place. The io_uring backend and public server co
 | `connslab` | Chunked slot table, lifecycle state machine, bounded write queue |
 | `room` | Sharded directory, Self-Room resolver, encode-once fan-out planner |
 | `timerwheel` | Hierarchical deadlines for handshake, idle, ping, and close |
+| `uring/giouring` | Vendored liburing port, patched and pinned |
 
 ## Shape
 
