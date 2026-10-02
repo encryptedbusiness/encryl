@@ -25,6 +25,7 @@ The kernel layer is in place. The reactor and public server come next.
 | `room` | Sharded directory, Self-Room resolver, encode-once fan-out planner |
 | `timerwheel` | Hierarchical deadlines for handshake, idle, ping, and close |
 | `uring/giouring` | Vendored liburing port, patched and pinned |
+| `uring` | Ring setup, kernel probe, RX/TX arenas, opcode restrictions |
 
 ## Shape
 
