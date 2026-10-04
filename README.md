@@ -26,6 +26,7 @@ The kernel layer is in place. The reactor and public server come next.
 | `timerwheel` | Hierarchical deadlines for handshake, idle, ping, and close |
 | `uring/giouring` | Vendored liburing port, patched and pinned |
 | `uring` | Ring setup, kernel probe, RX/TX arenas, opcode restrictions |
+| `netio` | Raw SO_REUSEPORT listener with an explicit backlog |
 
 ## Shape
 
