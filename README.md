@@ -5,13 +5,12 @@ connection counts with bounded memory per connection, built for room-based and
 event-based data transport.
 
 Encryl is being built bottom-up. An idle connection will be a slab slot and a
-file descriptor, not a goroutine, timer, or buffer. The transport parsers and
-portable data structures come first, then the io_uring reactor and the public
-server.
+file descriptor, not a goroutine, timer, or buffer. The reactor is in place;
+the public server comes next.
 
 ## Status
 
-The kernel layer is in place. The reactor and public server come next.
+The reactor is in place. The public server facade comes next.
 
 ## What exists
 
@@ -27,6 +26,7 @@ The kernel layer is in place. The reactor and public server come next.
 | `uring/giouring` | Vendored liburing port, patched and pinned |
 | `uring` | Ring setup, kernel probe, RX/TX arenas, opcode restrictions |
 | `netio` | Raw SO_REUSEPORT listener with an explicit backlog |
+| `reactor` | One loop per CPU, completion path, commands, timers, send path |
 
 ## Shape
 
