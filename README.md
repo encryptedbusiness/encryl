@@ -4,47 +4,86 @@ _Encryl_ — encrypted loop. A sync engine and WebSocket provider for very high
 connection counts with bounded memory per connection, built for room-based and
 event-based data transport.
 
-Encryl is being built bottom-up. An idle connection will be a slab slot and a
-file descriptor, not a goroutine, timer, or buffer. The reactor is in place;
-the public server comes next.
+Encryl keeps the per-connection cost small. An idle connection is a slab slot
+and a file descriptor; it does not own a goroutine, a timer, a read buffer, or a
+write buffer. Buffers come from a per-loop arena only while a receive or a
+control send is in flight. The bounded write queue is the only per-connection
+queue, and a full queue returns an error instead of blocking or dropping
+silently.
 
 ## Status
 
-The reactor is in place. The public server facade comes next.
+First runnable server. The facade exposes the event and room API on top of the
+reactor. Connection handoff and the topic helper are in place; HTTP integration
+and the protocol slice are next.
 
-## What exists
+## Quick start
 
-| Package | Role |
-| ------- | ---- |
-| `internal/fnv` | FNV-1a 32-bit hash shared by event names and room sharding |
-| `ws` | RFC 6455 frame parser: masking, fragmentation, control frames, limits |
-| `httpx` | Incremental HTTP/1.1 upgrade parser: request line, headers, limits |
-| `event` | 16-byte envelope, flags, ACK tokens, event kinds |
-| `connslab` | Chunked slot table, lifecycle state machine, bounded write queue |
-| `room` | Sharded directory, Self-Room resolver, encode-once fan-out planner |
-| `timerwheel` | Hierarchical deadlines for handshake, idle, ping, and close |
-| `uring/giouring` | Vendored liburing port, patched and pinned |
-| `uring` | Ring setup, kernel probe, RX/TX arenas, opcode restrictions |
-| `netio` | Raw SO_REUSEPORT listener with an explicit backlog |
-| `reactor` | One loop per CPU, completion path, commands, timers, send path |
+```go
+cfg := encryl.DefaultConfig()
+cfg.Addr = ":8080"
+cfg.AllowedOrigins = []string{"https://app.example.com"}
 
-## Shape
+srv, err := encryl.New(cfg)
+if err != nil {
+    log.Fatal(err) // every validation problem, at once
+}
+defer srv.Shutdown(context.Background())
 
-- One event loop per CPU. Connections belong to exactly one loop.
-- A connection is a slab slot plus a file descriptor. No goroutine, timer, or
-  buffer per idle connection.
-- Every send goes through a room. A direct send is an emit to the connection's
-  Self-Room.
-- The write queue is bounded by messages and bytes. A full queue is an explicit
-  error, not a silent drop.
+srv.OnConnect(func(c *encryl.Conn) error {
+    return c.Join("general")
+})
+
+srv.On("chat", func(c *encryl.Conn, data []byte) {
+    // data is borrowed: valid only until this returns.
+    // c.To excludes the caller; c.ToRoom includes it.
+    _ = c.To("general").Emit("chat", data)
+})
+
+srv.OnRequest("rpc.echo", func(c *encryl.Conn, req []byte) ([]byte, error) {
+    return req, nil
+})
+
+log.Fatal(srv.ListenAndServe(context.Background()))
+```
+
+The public surface is global-handler based: one handler per event, no
+per-connection handler maps. Payloads are borrowed `[]byte`; the application
+decodes JSON or MessagePack itself.
+
+## How it works
+
+A connection is owned by exactly one io_uring loop for its whole life. The loop
+accepts, parses, dispatches, and writes without handing the connection to a
+goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
+
+- The slab stores slot state in fixed-size chunks. Handles are `(slot,
+  generation)` pairs; a stale handle returns `ErrClosed` instead of touching a
+  reused slot.
+- The write queue is bounded by messages and bytes. Admission is synchronous.
+  The default policy returns `ErrBackpressure`; drop and close-slow policies are
+  available.
+- Every send is a room send. A direct send is an emit to the connection's
+  implicit Self-Room, which costs no storage.
+- The timer wheel has one hierarchical set of deadlines per loop. A connection
+  has at most one active handshake, idle, ping, and close deadline.
+- The event registry is frozen at start. Dispatch is one atomic load and one map
+  lookup, with no per-message lock.
 
 ## Development
 
 ```sh
-go test ./...
+make fmt vet test test-race checkptr
+make cross
 ```
 
-The portable packages build on macOS; the runtime packages are Linux-only.
+Runtime work needs Linux 6.6+:
+
+```sh
+make limactl-up
+make preflight
+make test-uring
+```
 
 ## License
 
