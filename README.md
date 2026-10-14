@@ -13,9 +13,8 @@ silently.
 
 ## Status
 
-First runnable server. The facade exposes the event and room API on top of the
-reactor. Connection handoff and the topic helper are in place; HTTP integration
-and the protocol slice are next.
+First runnable server with the topic helper. The facade exposes events, rooms,
+requests, and connection hooks on top of the reactor.
 
 ## Quick start
 
@@ -47,9 +46,16 @@ srv.OnRequest("rpc.echo", func(c *encryl.Conn, req []byte) ([]byte, error) {
 log.Fatal(srv.ListenAndServe(context.Background()))
 ```
 
-The public surface is global-handler based: one handler per event, no
-per-connection handler maps. Payloads are borrowed `[]byte`; the application
-decodes JSON or MessagePack itself.
+For a handler that emits at high rates, precompute the ID once:
+
+```go
+chat := srv.Topic("chat")
+chat.On(func(c *encryl.Conn, data []byte) {
+    _ = chat.To(c, "general").Emit(data) // no hash per emit
+})
+```
+
+`srv.On` remains the one-line convenience.
 
 ## How it works
 
