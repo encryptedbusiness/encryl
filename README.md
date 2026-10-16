@@ -13,8 +13,8 @@ silently.
 
 ## Status
 
-First runnable server with the topic helper. The facade exposes events, rooms,
-requests, and connection hooks on top of the reactor.
+The protobuf codec and schema are in. The command/reply/push vocabulary builds
+and passes its tests; the upgrade path and dispatcher are next.
 
 ## Quick start
 
@@ -56,6 +56,17 @@ chat.On(func(c *encryl.Conn, data []byte) {
 ```
 
 `srv.On` remains the one-line convenience.
+
+## Protobuf codec
+
+The new `protocol` package implements a small command/reply/push codec:
+length-delimited messages, a `Connect` command, subscribe/publish/send/ack, and
+pushes for events, Self-Room messages, join/leave, disconnect, and server
+requests. It is a protobuf subset inspired by Centrifuge, not wire-compatible
+with it.
+
+The codec and the `.proto` schema are in place. Wiring it into the upgrade path
+and the event dispatcher is next.
 
 ## How it works
 

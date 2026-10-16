@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+// encryl protobuf event protocol v1.
+//
+// This schema is inspired by Centrifuge, Centrifugo, and Grafana Live.
+// A WebSocket binary message contains
+// one or more length-delimited messages:
+//
+//   varint length | message | varint length | message | ...
+//
+// The server implements a hand-written codec for the hot path. This file is
+// the client contract and the test oracle. Payloads are borrowed for the
+// duration of a handler call; clients must not rely on server-side retention.
+package encryl.protocol.v1;
+
+message Command {
+  uint32 id = 1;
+  oneof body {
+    Connect connect = 2;
+    Subscribe subscribe = 3;
+    Unsubscribe unsubscribe = 4;
+    Publish publish = 5;
+    Send send = 6;
+    Ack ack = 7;
+    Pong pong = 8;
+  }
+}
+
+message Connect {
+  string token = 1;
+  string client = 2;
+  string version = 3;
+  repeated string subscriptions = 4;
+}
+
+message Subscribe {
+  string room = 1;
+}
+
+message Unsubscribe {
+  uint32 room_id = 1;
+}
+
+message EventRef {
+  oneof ref {
+    uint32 id = 1;
+    string name = 2;
+  }
+}
+
+message Publish {
+  oneof target {
+    uint32 room_id = 1;
+    string room = 2;
+  }
+  EventRef event = 3;
+  bytes payload = 4;
+  uint64 request_id = 5;
+}
+
+message Send {
+  EventRef event = 1;
+  bytes payload = 2;
+  uint64 request_id = 3;
+}
+
+message Ack {
+  uint64 token = 1;
+  bytes payload = 2;
+}
+
+message Pong {}
+
+message Reply {
+  uint32 id = 1;
+  Error error = 2;
+  oneof body {
+    ConnectResult connect = 3;
+    SubscribeResult subscribe = 4;
+    PublishResult publish = 5;
+    AckResult ack = 6;
+    Push push = 7;
+  }
+}
+
+message Error {
+  uint32 code = 1;
+  string message = 2;
+  bool temporary = 3;
+}
+
+message ConnectResult {
+  string client_id = 1;
+  uint32 ping_seconds = 2;
+  bool pong = 3;
+  repeated SubscribeResult subscriptions = 4;
+}
+
+message SubscribeResult {
+  uint32 room_id = 1;
+  uint32 event_id = 2;
+}
+
+message PublishResult {}
+
+message AckResult {
+  bytes payload = 1;
+}
+
+message Push {
+  oneof body {
+    EventPush event = 1;
+    Message message = 2;
+    Join join = 3;
+    Leave leave = 4;
+    Disconnect disconnect = 5;
+    Request request = 6;
+  }
+}
+
+message EventPush {
+  uint32 room_id = 1;
+  string room = 2;
+  uint32 event_id = 3;
+  bytes payload = 4;
+  uint64 request_id = 5;
+  uint64 offset = 6;
+}
+
+message Message {
+  uint32 event_id = 1;
+  bytes payload = 2;
+  uint64 request_id = 3;
+}
+
+message Join {
+  uint32 room_id = 1;
+}
+
+message Leave {
+  uint32 room_id = 1;
+}
+
+message Disconnect {
+  uint32 code = 1;
+  string reason = 2;
+}
+
+message Request {
+  uint64 token = 1;
+  uint32 event_id = 2;
+  bytes payload = 3;
+}
