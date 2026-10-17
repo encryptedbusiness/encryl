@@ -13,8 +13,9 @@ silently.
 
 ## Status
 
-The protobuf codec and schema are in. The command/reply/push vocabulary builds
-and passes its tests; the upgrade path and dispatcher are next.
+The native server and the optional protobuf protocol share the event core. The
+protocol slice adds a command/reply/push vocabulary without changing rooms,
+Self-Rooms, ACKs, or the write queue.
 
 ## Quick start
 
@@ -57,16 +58,21 @@ chat.On(func(c *encryl.Conn, data []byte) {
 
 `srv.On` remains the one-line convenience.
 
-## Protobuf codec
+## Wire protocol
 
-The new `protocol` package implements a small command/reply/push codec:
-length-delimited messages, a `Connect` command, subscribe/publish/send/ack, and
-pushes for events, Self-Room messages, join/leave, disconnect, and server
-requests. It is a protobuf subset inspired by Centrifuge, not wire-compatible
-with it.
+Two encodings share the same event core:
 
-The codec and the `.proto` schema are in place. Wiring it into the upgrade path
-and the event dispatcher is next.
+- `encryl.v2` is the native 16-byte envelope: version, kind, flags, event ID,
+  request ID, then the opaque payload. Native clients use it.
+- `encryl.pb.v1` (or `?format=protobuf`) selects the protobuf command protocol.
+  It is a small command/reply/push subset inspired by Centrifuge, not
+  wire-compatible with Centrifuge or Grafana Live. A connection that offers no
+  subprotocol negotiates protobuf by default.
+
+One WebSocket binary message carries one or more varint-length-delimited
+messages. Client commands get a reply with the same ID; asynchronous pushes
+ride a reply with ID 0. The codec is hand-written and zero-allocation on the hot
+path. The wire limits and close codes are in `docs/protocol.md` once the M0 documentation lands.
 
 ## How it works
 
