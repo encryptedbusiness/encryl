@@ -13,9 +13,8 @@ silently.
 
 ## Status
 
-The native server and the optional protobuf protocol share the event core. The
-protocol slice adds a command/reply/push vocabulary without changing rooms,
-Self-Rooms, ACKs, or the write queue.
+Named events and the topic API are in place. The registry is frozen at start;
+the hot path uses numeric IDs, and the string API hashes once per send.
 
 ## Quick start
 
@@ -46,6 +45,11 @@ srv.OnRequest("rpc.echo", func(c *encryl.Conn, req []byte) ([]byte, error) {
 
 log.Fatal(srv.ListenAndServe(context.Background()))
 ```
+
+Named events are the public API. `srv.On("chat", handler)` stores the handler
+in one registry keyed by the FNV-1a 32-bit hash of the name. The registry is
+frozen at start, so dispatch is one atomic load and one map lookup, with no
+per-message lock. `srv.OnID` stays available for numeric clients.
 
 For a handler that emits at high rates, precompute the ID once:
 
