@@ -13,8 +13,9 @@ silently.
 
 ## Status
 
-Named events and the topic API are in place. The registry is frozen at start;
-the hot path uses numeric IDs, and the string API hashes once per send.
+The server can run standalone or behind an existing net/http server. `Start`
+skips the listener; `httpuring` provides a raw HTTP/1.1 loop and a net.Listener
+adapter over io_uring.
 
 ## Quick start
 
@@ -46,21 +47,24 @@ srv.OnRequest("rpc.echo", func(c *encryl.Conn, req []byte) ([]byte, error) {
 log.Fatal(srv.ListenAndServe(context.Background()))
 ```
 
-Named events are the public API. `srv.On("chat", handler)` stores the handler
-in one registry keyed by the FNV-1a 32-bit hash of the name. The registry is
-frozen at start, so dispatch is one atomic load and one map lookup, with no
-per-message lock. `srv.OnID` stays available for numeric clients.
+## Running behind an HTTP server
 
-For a handler that emits at high rates, precompute the ID once:
+`Start` runs the reactor without binding a listener. The application keeps its
+HTTP server and hands upgraded connections to Encryl:
 
 ```go
-chat := srv.Topic("chat")
-chat.On(func(c *encryl.Conn, data []byte) {
-    _ = chat.To(c, "general").Emit(data) // no hash per emit
-})
+if err := srv.Start(ctx); err != nil {
+    log.Fatal(err)
+}
+defer srv.Shutdown(context.Background())
+
+http.Handle("/ws", srv) // net/http
 ```
 
-`srv.On` remains the one-line convenience.
+`httpuring` provides a raw HTTP/1.1 server and a `net.Listener` adapter over
+io_uring. The fd is duplicated with `F_DUPFD_CLOEXEC`; the socket payload is not
+copied. The reactor writes the `101`. TLS terminates upstream and HTTP/2 is not
+supported.
 
 ## Wire protocol
 
