@@ -13,9 +13,8 @@ silently.
 
 ## Status
 
-The server can run standalone or behind an existing net/http server. `Start`
-skips the listener; `httpuring` provides a raw HTTP/1.1 loop and a net.Listener
-adapter over io_uring.
+The server runs standalone or behind an existing HTTP server. `Start` skips the
+listener; net/http, fasthttp, and Fiber v3 hand the upgraded fd to the reactor.
 
 ## Quick start
 
@@ -61,9 +60,20 @@ defer srv.Shutdown(context.Background())
 http.Handle("/ws", srv) // net/http
 ```
 
-`httpuring` provides a raw HTTP/1.1 server and a `net.Listener` adapter over
-io_uring. The fd is duplicated with `F_DUPFD_CLOEXEC`; the socket payload is not
-copied. The reactor writes the `101`. TLS terminates upstream and HTTP/2 is not
+The adapters module covers fasthttp and Fiber v3:
+
+```go
+import fasthttpadapter "github.com/encryptedbusiness/encryl/adapters/fasthttp"
+fasthttp.ListenAndServe(":8080", fasthttpadapter.Handler(srv))
+```
+
+```go
+import fiberadapter "github.com/encryptedbusiness/encryl/adapters/fiberv3"
+app.Get("/ws", fiberadapter.Handler(srv))
+```
+
+The fd is duplicated with `F_DUPFD_CLOEXEC`; the socket payload is not copied.
+The reactor writes the `101`. TLS terminates upstream and HTTP/2 is not
 supported.
 
 ## Wire protocol
