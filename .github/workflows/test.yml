@@ -1,0 +1,63 @@
+name: test
+
+on:
+  push:
+    branches: [v2, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: cross-build
+        run: |
+          GOOS=linux GOARCH=amd64 go build ./...
+          GOOS=linux GOARCH=arm64 go build ./...
+
+      - name: test
+        run: go test ./...
+
+      - name: test adapters
+        run: cd adapters && go test ./...
+
+      - name: build examples
+        run: |
+          go build -o /dev/null ./examples/echo ./examples/chat ./examples/http ./examples/nethttp ./examples/mux ./examples/uringhttp ./examples/uringhttp_echo
+          cd examples/fiber && go build -o /dev/null .
+          cd ../uringhttp_chi && go build -o /dev/null .
+          cd ../uringhttp_websocket && go build -o /dev/null .
+
+      - name: race
+        run: go test -race $(go list ./... | grep -v uring/giouring)
+
+      - name: race adapters
+        run: cd adapters && go test -race ./...
+
+      - name: fuzz smoke
+        run: go test -run=NONE -fuzz=FuzzDecodeCommands -fuzztime=45s ./protocol
+
+      - name: lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.2
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: docs-check
+        run: ./scripts/docs-check.sh

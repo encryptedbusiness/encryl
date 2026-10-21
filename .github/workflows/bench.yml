@@ -1,0 +1,63 @@
+name: bench
+
+# Nightly benchmarks on the dedicated host. Every result is committed or
+# uploaded as an artifact with the preflight table, so a number can always be
+# traced to a host, kernel, and commit.
+#
+# The regression gate starts at 5% on hot-path microbenchmarks. End-to-end
+# throughput SLOs are not enforced until M1 establishes a measured baseline;
+# inventing a target before measuring is how benchmark suites become theatre.
+
+on:
+  schedule:
+    - cron: "42 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    if: github.repository == 'sairash/encryl'
+    runs-on: [self-hosted, linux, io-uring]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: preflight
+        run: |
+          {
+            echo "commit=$(git rev-parse --short HEAD)"
+            echo "host=$(hostname)"
+            echo "kernel=$(uname -r)"
+            echo "cpus=$(nproc)"
+            echo "memory=$(awk '/MemTotal/ {printf \"%.1f GiB\", $2/1024/1024}' /proc/meminfo)"
+            sysctl net.core.somaxconn net.ipv4.tcp_max_syn_backlog 2>/dev/null || true
+            ulimit -n
+          } | tee preflight.txt
+
+      - name: microbenchmarks
+        run: go test -run=NONE -bench=. -benchmem -count=6 ./... > bench-new.txt
+
+      - name: compare to stored baseline
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+          if [ -f docs/benchmarks/bench-baseline.txt ]; then
+            benchstat docs/benchmarks/bench-baseline.txt bench-new.txt | tee benchstat.txt
+          else
+            echo "no stored baseline yet; this run establishes one"
+            cp bench-new.txt benchstat.txt
+          fi
+
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ github.sha }}
+          path: |
+            preflight.txt
+            bench-new.txt
+            benchstat.txt

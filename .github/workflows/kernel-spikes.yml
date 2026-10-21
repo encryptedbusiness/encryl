@@ -1,0 +1,67 @@
+name: kernel
+
+# These jobs need a real Linux kernel with io_uring. They cannot run on
+# GitHub-hosted runners: io_uring is commonly blocked by the sandbox seccomp
+# profile, and the host kernel version is outside our support matrix. Register a
+# runner with the labels below, or point the workflow at a dedicated box.
+#
+# The job fails closed: if the kernel does not meet the documented floor, the
+# test does not run and the job is red. That is deliberate — a skipped gate is
+# worse than a failed one.
+
+on:
+  push:
+    branches: [v2]
+  pull_request:
+    paths:
+      - "reactor/**"
+      - "netio/**"
+      - "uring/**"
+      - "connslab/**"
+      - "ws/**"
+      - "httpx/**"
+      - "event/**"
+      - "room/**"
+      - "protocol/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: [self-hosted, linux, io-uring]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: kernel floor
+        run: |
+          release=$(uname -r)
+          echo "kernel=$release"
+          major=${release%%.*}
+          rest=${release#*.}
+          minor=${rest%%.*}
+          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 6 ]; }; then
+            echo "::error::kernel $release is below the 6.6 support floor"
+            exit 1
+          fi
+
+      - name: io_uring tests
+        run: go test -v ./uring ./uring/giouring
+
+  uring:
+    needs: preflight
+    runs-on: [self-hosted, linux, io-uring]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: reactor tests
+        run: go test -count=3 -timeout=5m ./uring ./uring/giouring ./reactor

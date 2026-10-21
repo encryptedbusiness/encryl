@@ -13,8 +13,8 @@ silently.
 
 ## Status
 
-Examples are in place for the public API, HTTP attachment, and io_uring HTTP.
-The benchmark harness and scripts are next.
+Examples, benchmarks, scripts, and CI are in place. The public surface is stable
+enough to run and measure.
 
 ## Quick start
 
@@ -111,18 +111,25 @@ goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
 - The event registry is frozen at start. Dispatch is one atomic load and one map
   lookup, with no per-message lock.
 
-## Examples
+## Repository layout
 
-- `examples/echo`: minimal echo server for soak and Autobahn.
-- `examples/chat`: single-listener browser chat with rooms, topics, ACKs.
-- `examples/http`: attached net/http server with echo and broadcast events.
-- `examples/nethttp`: explicit net.Listener + http.Server.Serve + reactor.
-- `examples/mux`: path-routed net/http mux with a REST broadcast API.
-- `examples/uringhttp`: net/http + ServeMux on httpuring's io_uring listener.
-- `examples/uringhttp_echo`: raw HTTP echo on httpuring.Server.
-- `examples/uringhttp_chi`: chi router and middleware on httpuring.
-- `examples/uringhttp_websocket`: chi HTTP API + Encryl WebSocket on one listener.
-- `examples/fiber`: attached Fiber v3 server.
+```text
+internal/app/       facade: Server, Conn, config, dispatch, attach, events
+event/              envelope, registry, middleware, ACKs
+room/               directory, Self-Room resolver, fan-out planner
+connslab/           slab, state machine, frames, write queue
+ws/, httpx/         RFC 6455 and HTTP upgrade parsers
+protocol/           protobuf codec, session, event names
+reactor/            io_uring loop, commands, timers, send path
+uring/, netio/      ring, tags, probe, listener, arenas
+httpuring/          HTTP/1.1 server and net.Listener adapter over uring
+timerwheel/         hierarchical deadlines
+adapters/           fasthttp and Fiber v3 modules
+bench/              codec, room, reactor, HTTP, and workload benchmarks
+examples/           echo, chat, HTTP, mux, uringhttp, Fiber
+scripts/            Linux runner, memory/scale gates, practical runs
+deploy/             Lima VM and host bootstrap
+```
 
 ## Development
 
@@ -137,6 +144,7 @@ Runtime work needs Linux 6.6+:
 make limactl-up
 make preflight
 make test-uring
+make autobahn
 ```
 
 ## License

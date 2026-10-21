@@ -1,0 +1,35 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - errorlint
+    - misspell
+    - unconvert
+
+issues:
+  exclude-dirs:
+    - internal/uring/giouring
+  exclude-rules:
+    # The spikes are throwaway kernel experiments, not shipped code. They use
+    # syscall-level APIs deliberately and are gated by the kernel CI job.
+    - path: internal/spike/
+      linters:
+        - errcheck
+    - path: bench/loadgen/
+      linters:
+        - errcheck
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+# Note: gosec is deliberately not enabled yet. It flags the intentional
+# unsafe.Pointer use in internal/ktls (the kernel crypto_info struct) and needs
+# per-file tuning. Security coverage today comes from govulncheck, the
+# threat-model review checklist, and the fuzz targets. Add gosec with a
+# reviewed exclusion list rather than silencing it wholesale.
