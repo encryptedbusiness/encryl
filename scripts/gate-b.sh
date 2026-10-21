@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Gate B: 1M connections with the 50k msg/s echo shape, then a drain phase.
+set -euo pipefail
+
+CONNS=${CONNS:-1000000}
+SHARDS=${SHARDS:-2}
+SRC_IPS=${SRC_IPS:-40}
+RATE=${RATE:-10000}
+MONITOR=${MONITOR:-180}
+DRAIN=${DRAIN:-45}
+DURATION=${DURATION:-420s}
+MSG_RATE=${MSG_RATE:-0.05}
+TX_BYTES=${TX_BYTES:-67108864}
+BUFFER_COUNT=${BUFFER_COUNT:-32768}
+READ_BUFFER=${READ_BUFFER:-2048}
+
+ulimit -n 1048576 2>/dev/null || true
+
+CONNS="$CONNS" SHARDS="$SHARDS" SRC_IPS="$SRC_IPS" RATE="$RATE" \
+  MONITOR="$MONITOR" DRAIN="$DRAIN" DURATION="$DURATION" \
+  MSG_RATE="$MSG_RATE" TX_BYTES="$TX_BYTES" \
+  BUFFER_COUNT="$BUFFER_COUNT" READ_BUFFER="$READ_BUFFER" \
+  ./scripts/scale-sharded.sh
