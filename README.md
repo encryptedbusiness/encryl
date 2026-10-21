@@ -13,8 +13,8 @@ silently.
 
 ## Status
 
-The server runs standalone or behind an existing HTTP server. `Start` skips the
-listener; net/http, fasthttp, and Fiber v3 hand the upgraded fd to the reactor.
+Examples are in place for the public API, HTTP attachment, and io_uring HTTP.
+The benchmark harness and scripts are next.
 
 ## Quick start
 
@@ -110,6 +110,19 @@ goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
   has at most one active handshake, idle, ping, and close deadline.
 - The event registry is frozen at start. Dispatch is one atomic load and one map
   lookup, with no per-message lock.
+
+## Examples
+
+- `examples/echo`: minimal echo server for soak and Autobahn.
+- `examples/chat`: single-listener browser chat with rooms, topics, ACKs.
+- `examples/http`: attached net/http server with echo and broadcast events.
+- `examples/nethttp`: explicit net.Listener + http.Server.Serve + reactor.
+- `examples/mux`: path-routed net/http mux with a REST broadcast API.
+- `examples/uringhttp`: net/http + ServeMux on httpuring's io_uring listener.
+- `examples/uringhttp_echo`: raw HTTP echo on httpuring.Server.
+- `examples/uringhttp_chi`: chi router and middleware on httpuring.
+- `examples/uringhttp_websocket`: chi HTTP API + Encryl WebSocket on one listener.
+- `examples/fiber`: attached Fiber v3 server.
 
 ## Development
 

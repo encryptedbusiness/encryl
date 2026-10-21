@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Encryl chat</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; background: #111318; color: #e8eaf0; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+    #status { color: #8b93a7; font-size: 13px; margin-bottom: 18px; }
+    #messages { height: 60vh; overflow: auto; border: 1px solid #262b36; border-radius: 10px; padding: 12px; background: #171a21; }
+    .msg { padding: 6px 0; border-bottom: 1px solid #20242d; font-size: 14px; overflow-wrap: anywhere; }
+    .msg:last-child { border-bottom: 0; }
+    .who { color: #8ab4ff; font-weight: 600; }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    input, button { border: 1px solid #2f3542; border-radius: 8px; background: #1b1f28; color: #e8eaf0; padding: 9px 10px; font: inherit; }
+    input#room { width: 110px; }
+    input#text { flex: 1; min-width: 0; }
+    button { cursor: pointer; }
+    button#ask { background: #24324a; border-color: #35507a; }
+    button:disabled { opacity: .5; cursor: default; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Encryl chat</h1>
+  <div id="status">connecting…</div>
+  <div id="messages" role="log" aria-live="polite"></div>
+  <form id="form">
+    <input id="room" value="lobby" aria-label="room" placeholder="room">
+    <input id="text" autocomplete="off" aria-label="message" placeholder="Message">
+    <button id="send" disabled>Send</button>
+    <button id="ask" type="button" disabled>Ask</button>
+  </form>
+</main>
+<script>window.ENCRYL_WS = "{{WS_URL}}";</script>
+<script src="/app.js"></script>
+</body>
+</html>
