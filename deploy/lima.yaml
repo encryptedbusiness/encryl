@@ -1,0 +1,69 @@
+# Lima VM for Linux-only verification.
+#
+# The runtime is io_uring-only, so every server test, spike, and benchmark runs
+# here. Ubuntu 24.04 ships a 6.8 kernel, which clears the 6.6 floor with room for
+# the 6.12 LTS matrix later.
+#
+#   limactl start --name=encryl-dev --tty=false deploy/lima.yaml
+#   make linux-shell
+#   limactl stop encryl-dev
+#   limactl start encryl-dev
+#
+# The home directory is mounted at the same path inside the guest, so
+# `limactl shell --workdir $PWD encryl-dev <command>` lands in this checkout.
+# Note the order: flags must precede the instance name.
+
+vmType: vz
+arch: aarch64
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: aarch64
+cpus: 8
+memory: 16GiB
+disk: 40GiB
+mountType: virtiofs
+mounts:
+  - location: "~"
+    writable: true
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -euxo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y --no-install-recommends \
+        ca-certificates curl git iproute2 procps sysstat kmod build-essential
+
+      # Ubuntu 24.04 packages Go 1.22, which is older than go.mod's language
+      # version. Install the toolchain the repository pins.
+      GO_VERSION="${GO_VERSION:-1.27.2}"
+      if ! /usr/local/go/bin/go version 2>/dev/null | grep -q "go${GO_VERSION}"; then
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-arm64.tar.gz" -o /tmp/go.tgz
+        rm -rf /usr/local/go
+        tar -C /usr/local -xzf /tmp/go.tgz
+      fi
+      ln -sf /usr/local/go/bin/go /usr/local/bin/go
+      ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+      # Connection density tuning. These are the values docs/operations.md
+      # documents; benchmarks must run with them and report them.
+      cat > /etc/sysctl.d/99-encryl.conf <<'SYSCTL'
+      net.core.somaxconn = 65535
+      net.ipv4.tcp_max_syn_backlog = 65535
+      net.core.netdev_max_backlog = 65535
+      net.ipv4.ip_local_port_range = 10240 65535
+      net.ipv4.tcp_tw_reuse = 1
+      net.ipv4.tcp_fin_timeout = 15
+      fs.file-max = 2097152
+      fs.nr_open = 2097152
+      SYSCTL
+      sysctl --system
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -euxo pipefail
+      grep -q 'ulimit -n' ~/.bashrc || echo 'ulimit -n 1048576' >> ~/.bashrc
+      ulimit -n 1048576
+      go version
+      go env GOMODCACHE GOPATH
