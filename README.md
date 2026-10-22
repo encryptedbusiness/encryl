@@ -13,10 +13,8 @@ silently.
 
 ## Status
 
-The architecture decision records are in. They cover the io_uring-only choice,
-upstream TLS, the wire format, buffer ownership, backpressure, rooms, the
-WebSocket parser, benchmark method, public API, M0 verdicts, and connection
-lifetime.
+The architecture, protocol, threat model, operations, and contributing docs are
+in. The M0 verification log is next.
 
 ## Quick start
 
@@ -112,6 +110,17 @@ goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
   has at most one active handshake, idle, ping, and close deadline.
 - The event registry is frozen at start. Dispatch is one atomic load and one map
   lookup, with no per-message lock.
+
+## Documentation
+
+| Document | Contents |
+| -------- | -------- |
+| [architecture](docs/architecture.md) | ownership, buffers, timers, rooms, shutdown |
+| [protocol](docs/protocol.md) | native envelope, protobuf, close codes |
+| [threat model](docs/threat-model.md) | trust boundaries, trusted proxy, io_uring |
+| [operations](docs/operations.md) | tuning, metrics, runbooks |
+| [ADRs](docs/adr) | decisions that constrain the code |
+| [contributing](docs/CONTRIBUTING.md) | build tags, allocation gates, review checklist |
 
 ## Development
 
