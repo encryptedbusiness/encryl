@@ -13,8 +13,10 @@ silently.
 
 ## Status
 
-Examples, benchmarks, scripts, and CI are in place. The public surface is stable
-enough to run and measure.
+The architecture decision records are in. They cover the io_uring-only choice,
+upstream TLS, the wire format, buffer ownership, backpressure, rooms, the
+WebSocket parser, benchmark method, public API, M0 verdicts, and connection
+lifetime.
 
 ## Quick start
 
@@ -111,30 +113,10 @@ goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
 - The event registry is frozen at start. Dispatch is one atomic load and one map
   lookup, with no per-message lock.
 
-## Repository layout
-
-```text
-internal/app/       facade: Server, Conn, config, dispatch, attach, events
-event/              envelope, registry, middleware, ACKs
-room/               directory, Self-Room resolver, fan-out planner
-connslab/           slab, state machine, frames, write queue
-ws/, httpx/         RFC 6455 and HTTP upgrade parsers
-protocol/           protobuf codec, session, event names
-reactor/            io_uring loop, commands, timers, send path
-uring/, netio/      ring, tags, probe, listener, arenas
-httpuring/          HTTP/1.1 server and net.Listener adapter over uring
-timerwheel/         hierarchical deadlines
-adapters/           fasthttp and Fiber v3 modules
-bench/              codec, room, reactor, HTTP, and workload benchmarks
-examples/           echo, chat, HTTP, mux, uringhttp, Fiber
-scripts/            Linux runner, memory/scale gates, practical runs
-deploy/             Lima VM and host bootstrap
-```
-
 ## Development
 
 ```sh
-make fmt vet test test-race checkptr
+make fmt vet test test-race checkptr docs-check
 make cross
 ```
 
