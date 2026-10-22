@@ -13,8 +13,8 @@ silently.
 
 ## Status
 
-The architecture, protocol, threat model, operations, and contributing docs are
-in. The M0 verification log is next.
+M0 is verified. The io_uring probe, echo path, listener, reactor, and public
+facade are in place. The vertical-slice measurements are next.
 
 ## Quick start
 
@@ -111,14 +111,31 @@ goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
 - The event registry is frozen at start. Dispatch is one atomic load and one map
   lookup, with no per-message lock.
 
+## M0 verification
+
+Ubuntu 24.04 / kernel 6.8.0-147 / arm64 / Go 1.27.2 in a Lima VM on Apple
+Silicon. Full log:
+[`docs/m0-execution-log.md`](docs/m0-execution-log.md).
+
+| Check | Result |
+| ----- | ------ |
+| io_uring probe | all required opcodes and restrictions supported |
+| io_uring echo | 200 clients, 64 buffers, 200/200 echoed, zero errors |
+| kTLS userspace / TX / TX+RX | handshake and echo correct (historical; TLS is not part of the library) |
+| v1.0.2 idle density | 200,000 connections, 0 failed, 8.97 KiB process + 2.37 KiB slab per connection |
+
+The kTLS results are historical evidence. TLS terminates upstream; see
+[`ADR-0013`](docs/adr/0013-tls-terminates-upstream.md).
+
 ## Documentation
 
 | Document | Contents |
 | -------- | -------- |
 | [architecture](docs/architecture.md) | ownership, buffers, timers, rooms, shutdown |
-| [protocol](docs/protocol.md) | native envelope, protobuf, close codes |
+| [protocol](docs/protocol.md) | native envelope, command protocol, close codes |
 | [threat model](docs/threat-model.md) | trust boundaries, trusted proxy, io_uring |
 | [operations](docs/operations.md) | tuning, metrics, runbooks |
+| [benchmarks](docs/benchmarks/README.md) | method and evidence rules |
 | [ADRs](docs/adr) | decisions that constrain the code |
 | [contributing](docs/CONTRIBUTING.md) | build tags, allocation gates, review checklist |
 
