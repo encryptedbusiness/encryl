@@ -13,8 +13,8 @@ silently.
 
 ## Status
 
-M0 is verified. The io_uring probe, echo path, listener, reactor, and public
-facade are in place. The vertical-slice measurements are next.
+The vertical-slice track is measured. The reactor, facade, protocol, and named
+event paths have numbers on the 8-vCPU Linux host.
 
 ## Quick start
 
@@ -127,6 +127,73 @@ Silicon. Full log:
 The kTLS results are historical evidence. TLS terminates upstream; see
 [`ADR-0013`](docs/adr/0013-tls-terminates-upstream.md).
 
+## M2 measurements
+
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU Lima VM. Method and raw
+data: [`docs/benchmarks/2026-10-23-m2-vertical-slices.md`](docs/benchmarks/2026-10-23-m2-vertical-slices.md).
+
+| Path | Result |
+| ---- | ------ |
+| Public server echo, 100k | 26,916 ns/op, **0 B/op, 0 allocs/op** |
+| Raw reactor echo, 100k | 25,946 ns/op, **0 B/op, 0 allocs/op** |
+| Registry dispatch | 5.55 ns, 0 allocs |
+| Frame acquire/release | 21.0 ns, 0 allocs |
+| Pending ACK bind/take | 9.0 ns, 0 allocs |
+| Fan-out planner, 4096 refs | 50.4 µs, 0 allocs |
+| Envelope decode | 1.59 ns, 0 allocs |
+| Frame parse | 16.37 ns, 1343 MB/s, 0 allocs |
+| 1M idle plaintext | 1,000,000 open, **0.275 KiB total RSS/conn** |
+| 1M echo, 50k msg/s shape | 1,886,007 in / 1,886,007 out, zero drops |
+| 8k Self-Room echo | 546,374 msg/s, exact parity |
+| 10k room fan-out, 1/s | 195,692 frames in 20 s |
+| Struct sizes | Slot 160 B, Conn 88 B, Accounting 32 B, Frame 48 B |
+
+## M3 measurements
+
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU / 15.6 GiB Lima VM.
+Reports:
+[`2026-10-23-m3-validation.md`](docs/benchmarks/2026-10-23-m3-validation.md) and
+[`2026-10-23-m3-practical.md`](docs/benchmarks/2026-10-23-m3-practical.md).
+
+| Path | Result |
+| ---- | ------ |
+| True-rate echo, 400k | 19,279,981 / 19,279,981, zero drops, 47,968 msg/s |
+| 1M hold, 60 minutes, 1 broadcast / 10 s | 360,018,000 frames, 0 drops, fd flat, p99 176 ms |
+| 1M fan-out, 1 broadcast / 5 s | 59,265,161 / 59,265,161, 0 drops, p99 97 ms |
+| 1M fan-out, 1 broadcast / 1 s | 32.5% delivered on 8 vCPU; capacity limit, not a correctness failure |
+| 1:1 unicast, 100k | 1,100,000 / 1,100,000, p99 3 ms |
+| Delivery receipts (ACK), 50k | 550,000 / 550,000, p99 2 ms |
+| Group chat, 100k | 5,729,942 deliveries, p99 3 ms |
+| Churn | 4,839,786 cycles + 14,647,222 group deliveries, 0 failures |
+| EMQX 5.8.6, same fan-out shape | 6,000,000 / 6,000,000, 0 drops; 544.7 MiB vs 59.8 MB at 10k |
+
+## Protobuf codec
+
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
+[`docs/benchmarks/2026-10-23-protobuf-protocol.md`](docs/benchmarks/2026-10-23-protobuf-protocol.md).
+
+| Path | Result |
+| ---- | ------ |
+| Decode publish, 64B payload | 40.0 ns, **0 B/op, 0 allocs/op** |
+| Decode 16-message batch | 746.6 ns, 0 B/op, 0 allocs/op |
+| Encode event push, 64B | 36.2 ns, 0 B/op, 0 allocs/op |
+| Encode Self-Room message | 25.6 ns, 0 B/op, 0 allocs/op |
+| End-to-end protobuf echo, 100k | 27.1 µs/op, 0 B/op, 0 allocs/op |
+| Native echo, same harness | 26.9 µs/op, 0 B/op, 0 allocs/op |
+| Decoder fuzz | 5.25M execs in 10 s, no crash |
+
+## Named events
+
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
+[`docs/benchmarks/2026-10-23-named-events.md`](docs/benchmarks/2026-10-23-named-events.md).
+
+| Path | Result |
+| ---- | ------ |
+| `EventIDForName` for `chat` / `chat.message` / `room:presence:update` | 1.1 / 3.4 / 5.3 ns, 0 B/op, 0 allocs |
+| Named echo, 100k | 26.8 µs/op, 0 B/op, 0 allocs |
+| Topic echo, no hash, 100k | 26.8 µs/op, 0 B/op, 0 allocs |
+| Numeric echo, same harness | 27.0 µs/op, 0 B/op, 0 allocs |
+
 ## Documentation
 
 | Document | Contents |
@@ -144,6 +211,7 @@ The kTLS results are historical evidence. TLS terminates upstream; see
 ```sh
 make fmt vet test test-race checkptr docs-check
 make cross
+make fuzz
 ```
 
 Runtime work needs Linux 6.6+:
