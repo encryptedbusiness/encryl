@@ -13,8 +13,8 @@ silently.
 
 ## Status
 
-The vertical-slice track is measured. The reactor, facade, protocol, and named
-event paths have numbers on the 8-vCPU Linux host.
+The attached HTTP path and fd handoff are measured. The server can run under
+net/http, fasthttp, or Fiber without copying the socket payload.
 
 ## Quick start
 
@@ -193,6 +193,20 @@ Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
 | Named echo, 100k | 26.8 µs/op, 0 B/op, 0 allocs |
 | Topic echo, no hash, 100k | 26.8 µs/op, 0 B/op, 0 allocs |
 | Numeric echo, same harness | 27.0 µs/op, 0 B/op, 0 allocs |
+
+## Attached HTTP and fd handoff
+
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
+[`docs/benchmarks/2026-10-24-fd-handoff.md`](docs/benchmarks/2026-10-24-fd-handoff.md).
+
+| Path | Result |
+| ---- | ------ |
+| `BenchmarkServerEcho100k` | 27,731 ns/op, 0 B/op, 0 allocs |
+| `BenchmarkStringEcho100k` | 27,619 ns/op, 0 B/op, 0 allocs |
+| `BenchmarkTopicEcho100k` | 27,377 ns/op, 0 B/op, 0 allocs |
+| `BenchmarkProtoSendEcho100k` | 28,027 ns/op, 0 B/op, 0 allocs |
+| `PrepareUpgrade` | 0 allocs/op for the valid request matrix |
+| Attached hold | 6 minutes, 0 failures (not the 60-minute gate) |
 
 ## Documentation
 
