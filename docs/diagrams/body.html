@@ -1,0 +1,327 @@
+<h1>Encryl — A Visual Guide</h1>
+<p>This guide explains the v1 server in simple English. It also connects the new
+design to the old <code>uring-io-rewrite</code> branch. Read this guide if you knew the
+old branch and you want to know what changed and why.</p>
+<p>The guide uses short sentences. It uses the active voice. It defines each term
+one time. The diagrams show the important ideas.</p>
+<h2>1. What the server does</h2>
+<p>The server keeps many WebSocket connections open. A client sends an event. The
+server finds the handler for that event. The handler can send events to one
+connection, to a room, or to all connections.</p>
+<p><img src="guide-01.svg" alt="Diagram 1"></p>
+<h2>2. The hard problem</h2>
+<p>Most connections are idle at any moment. A chat room can have one million
+members. Perhaps ten members speak each second. The other 999,990 members only
+listen.</p>
+<p>The server must hold one million connections in a small memory space. The
+server must not reserve a thread, a stack, or a big buffer for each idle
+connection.</p>
+<p><img src="guide-02.svg" alt="Diagram 2"></p>
+<h2>3. The design you knew</h2>
+<p>The old branch had good ideas. A subscriber had a file descriptor, an ID, and a
+list of rooms. A room held a map of subscribers. A broadcast walked the map and
+wrote to each subscriber. Each subscriber had its own goroutine for reading.</p>
+<p><img src="guide-03.svg" alt="Diagram 3"></p>
+<p>The old branch had these costs:</p>
+<table>
+<thead>
+<tr>
+<th>Old part</th>
+<th>Cost for each connection</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Subscriber.Capture</code> goroutine</td>
+<td>About 8 KiB of stack</td>
+</tr>
+<tr>
+<td>Per-subscriber buffer</td>
+<td>Up to the buffer size</td>
+</tr>
+<tr>
+<td>Room key by file descriptor</td>
+<td>The kernel can reuse the number</td>
+</tr>
+<tr>
+<td>One frame copy for each receiver</td>
+<td>One allocation for each receiver</td>
+</tr>
+<tr>
+<td>One callback per I/O operation</td>
+<td>One more function call on each step</td>
+</tr>
+</tbody></table>
+<p>The old branch also sent text frames. The new server sends binary frames only.</p>
+<h2>4. The new design in one picture</h2>
+<p>The server has three layers. The facade is the public API. The slices own the
+features. The kernel owns the Linux primitives. A dependency points down. A
+lower layer never uses a higher layer.</p>
+<p><img src="guide-04.svg" alt="Diagram 4"></p>
+<h2>5. Idea 1: One loop owns many connections</h2>
+<p>A loop is one OS thread with one io_uring ring. The loop owns a fixed set of
+connections. All work for a connection runs on its own loop. No goroutine
+exists for each connection.</p>
+<p>The old model started a new goroutine after each read. The new model keeps one
+goroutine for the whole loop.</p>
+<p><img src="guide-05.svg" alt="Diagram 5"></p>
+<p>One loop on one core runs one handler at a time. For this reason, a handler
+must not block. A blocking handler stops every connection on that core.</p>
+<h2>6. Idea 2: A connection has a safe name</h2>
+<p>The old code used the file descriptor as the identity. The kernel can close a
+descriptor and give the same number to a new socket. A late message can then go
+to the wrong connection.</p>
+<p>The new code uses two numbers. The slot is the position in a table. The
+generation increases each time the server reuses the slot. A message for an old
+connection fails the generation check.</p>
+<p><img src="guide-06.svg" alt="Diagram 6"></p>
+<p>The public handle is small: a server pointer, a slot, and a generation. The
+server checks the pair on every call.</p>
+<h2>7. Idea 3: Every send goes through a room</h2>
+<p>A room is a named group of connections. A Self-Room is the private room of one
+connection. The Self-Room is implicit. The server does not store a member list
+for it. The Self-Room costs zero bytes.</p>
+<p>This is your old idea. Your branch called <code>JoinRoom(id, s)</code> with the session ID.
+The new server makes the Self-Room a first-class target.</p>
+<p><img src="guide-07.svg" alt="Diagram 7"></p>
+<p>A unicast send is an Emit to one Self-Room. A room send is an Emit to one named
+room. A broadcast is an Emit to all open connections. All three paths use one
+engine.</p>
+<h2>8. Idea 4: Encode one time. Share the frame.</h2>
+<p>A fan-out sends the same bytes to many connections. The server encodes the
+frame one time. The frame has a reference count. Each loop takes one reference.
+The frame returns to the pool when the last loop releases it.</p>
+<p>Each connection also has a write queue. The queue is bounded by messages and by
+bytes. A full queue returns <code>ErrBackpressure</code>. The server does not block and
+does not drop without a signal.</p>
+<p><img src="guide-08.svg" alt="Diagram 8"></p>
+<p><img src="guide-09.svg" alt="Diagram 9"></p>
+<h2>9. Idea 5: Ask and answer with an ACK</h2>
+<p>A request can ask for an answer. The request carries a request ID. The peer
+sends an ACK with the same ID. The server calls your callback one time: on the
+ACK, on a timeout, or on an error.</p>
+<p>The server binds the request to the connection that made it. A different
+connection cannot answer it with a guessed ID. The timeout uses the loop timer
+wheel. The server does not create a timer for each request.</p>
+<p><img src="guide-10.svg" alt="Diagram 10"></p>
+<h2>10. The journey of one message</h2>
+<p><img src="guide-11.svg" alt="Diagram 11"></p>
+<p>The payload is borrowed. It is valid only during the handler call. The server
+returns the read buffer to the pool after the handler returns.</p>
+<h2>11. Old words and new words</h2>
+<table>
+<thead>
+<tr>
+<th>Old branch</th>
+<th>New server</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Subscriber</code></td>
+<td><code>Conn</code></td>
+<td>The handle for one connection</td>
+</tr>
+<tr>
+<td><code>fd</code></td>
+<td><code>ConnID{Slot, Gen}</code></td>
+<td>The safe name of a connection</td>
+</tr>
+<tr>
+<td><code>StartUp(n)</code></td>
+<td><code>New(Config)</code></td>
+<td>Create the server</td>
+</tr>
+<tr>
+<td><code>On[&quot;chat&quot;]</code></td>
+<td><code>On(1024, handler)</code></td>
+<td>Bind a handler to a numeric event ID</td>
+</tr>
+<tr>
+<td><code>sub.Send(data)</code></td>
+<td><code>c.Emit(event, data)</code></td>
+<td>Send to this connection</td>
+</tr>
+<tr>
+<td><code>EmitDirect(sub, event, data)</code></td>
+<td><code>c.Emit(event, data)</code></td>
+<td>The same, through the Self-Room</td>
+</tr>
+<tr>
+<td><code>Emit(event, data, &quot;room&quot;)</code></td>
+<td><code>srv.To(&quot;room&quot;).Emit(event, data)</code></td>
+<td>Send to a room</td>
+</tr>
+<tr>
+<td><code>Broadcast(event, data)</code></td>
+<td><code>srv.Broadcast(event, data)</code></td>
+<td>Send to all connections</td>
+</tr>
+<tr>
+<td><code>AddToRoom(sub, name)</code></td>
+<td><code>c.Join(name)</code></td>
+<td>Join a room</td>
+</tr>
+<tr>
+<td><code>RemoveFromRoom(sub, name)</code></td>
+<td><code>c.Leave(name)</code></td>
+<td>Leave a room</td>
+</tr>
+<tr>
+<td><code>GetRoomMembers(name)</code></td>
+<td><code>srv.RoomSize(name)</code></td>
+<td>Count the members</td>
+</tr>
+<tr>
+<td><code>sub.Metadata</code></td>
+<td><code>Conn</code> fields and rooms</td>
+<td>Per-connection data</td>
+</tr>
+<tr>
+<td>One goroutine per <code>Capture</code></td>
+<td>One loop per core</td>
+<td>Who waits for the network</td>
+</tr>
+<tr>
+<td>Text frames</td>
+<td>Binary frames</td>
+<td>The wire format</td>
+</tr>
+<tr>
+<td>One frame per receiver</td>
+<td>One shared frame</td>
+<td>Fan-out cost</td>
+</tr>
+<tr>
+<td>Room map keyed by fd</td>
+<td>Sharded directory keyed by <code>Ref</code></td>
+<td>Room storage</td>
+</tr>
+<tr>
+<td><code>xsync.Map</code></td>
+<td>Sharded maps with locks</td>
+<td>Concurrency style</td>
+</tr>
+</tbody></table>
+<h2>12. Your ideas that survived</h2>
+<p>The rewrite does not reject your design. It keeps the important ideas and
+removes the costs.</p>
+<p><img src="guide-12.svg" alt="Diagram 12"></p>
+<p>The server also changes three costs: no goroutine for each connection, no
+buffer for each idle connection, and no frame copy for each receiver.</p>
+<h2>13. How to read the code</h2>
+<p><img src="guide-13.svg" alt="Diagram 13"></p>
+<p>Read the code in this order:</p>
+<ol>
+<li><code>docs/protocol.md</code> for the 16-byte envelope.</li>
+<li><code>internal/connection/slab.go</code> for the slot and the generation.</li>
+<li><code>internal/room/directory.go</code> and <code>selfroom.go</code> for rooms.</li>
+<li><code>internal/connection/writeq.go</code> for the bounded queue.</li>
+<li><code>internal/reactor/loop_linux.go</code> and the other <code>*_linux.go</code> files for the
+loop.</li>
+</ol>
+<h2>14. Rules you must obey</h2>
+<ul>
+<li>A handler must not block. It runs on a loop thread. A blocked handler stops
+every connection on that core.</li>
+<li>A payload is borrowed. Do not keep it after the handler returns. Copy it
+first if you need it later.</li>
+<li>Check the <code>Emit</code> error. A full queue returns <code>ErrBackpressure</code> under the
+default policy.</li>
+<li>Use the Self-Room for a unicast send. Use a named room for a group send.</li>
+<li>Do not use a stale <code>ConnID</code>. The generation check protects the server, but a
+stale ID cannot reach a live connection.</li>
+</ul>
+<h2>15. Small glossary</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>ACK</strong></td>
+<td>The envelope that confirms a request</td>
+</tr>
+<tr>
+<td><strong>Envelope</strong></td>
+<td>The first 16 bytes of a message</td>
+</tr>
+<tr>
+<td><strong>Event ID</strong></td>
+<td>The number that selects a handler</td>
+</tr>
+<tr>
+<td><strong>Facade</strong></td>
+<td>The public package that users import</td>
+</tr>
+<tr>
+<td><strong>Frame</strong></td>
+<td>One encoded WebSocket message</td>
+</tr>
+<tr>
+<td><strong>Generation</strong></td>
+<td>The number that makes a reused slot safe</td>
+</tr>
+<tr>
+<td><strong>Loop</strong></td>
+<td>One thread with one io_uring ring</td>
+</tr>
+<tr>
+<td><strong>Ring</strong></td>
+<td>The io_uring submission and completion queues</td>
+</tr>
+<tr>
+<td><strong>Self-Room</strong></td>
+<td>The implicit room of one connection</td>
+</tr>
+<tr>
+<td><strong>Slice</strong></td>
+<td>One package that owns one feature</td>
+</tr>
+<tr>
+<td><strong>Slot</strong></td>
+<td>The position of a connection in the table</td>
+</tr>
+<tr>
+<td><strong>Write queue</strong></td>
+<td>The frames that wait for the socket</td>
+</tr>
+</tbody></table>
+<h2>16. Measured results</h2>
+<p>These numbers come from the M2 report. The host is an 8 vCPU, 15.6 GiB Linux
+virtual machine. The kernel is 6.8. The Go version is 1.27.2.</p>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1,000,000 idle connections</td>
+<td>1,000,000 open, zero errors</td>
+</tr>
+<tr>
+<td>Memory for each idle connection</td>
+<td>0.392 KiB</td>
+</tr>
+<tr>
+<td>1M echo run</td>
+<td>1,886,007 in, 1,886,007 out</td>
+</tr>
+<tr>
+<td>Echo allocation</td>
+<td>0 bytes per operation</td>
+</tr>
+<tr>
+<td>8k Self-Room echo</td>
+<td>546,374 messages per second</td>
+</tr>
+<tr>
+<td>Struct size: slot</td>
+<td>192 bytes</td>
+</tr>
+</tbody></table>
+<p>The 60-minute hold and the 1M-member room fan-out are still open. See
+<code>docs/benchmarks/</code> for the raw data and the commands.</p>

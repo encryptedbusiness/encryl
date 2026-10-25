@@ -1,0 +1,8 @@
+flowchart TD
+    subgraph old[Old branch: uring-io-rewrite]
+        H[Hub] --> R1[Room: chat]
+        R1 --> S1[Subscriber<br/>fd 41<br/>buffer<br/>goroutine]
+        R1 --> S2[Subscriber<br/>fd 42<br/>buffer<br/>goroutine]
+        S1 --> E1[Compile 1 frame per receiver]
+        S2 --> E2[Compile 1 frame per receiver]
+    end

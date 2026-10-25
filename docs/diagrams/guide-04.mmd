@@ -1,0 +1,25 @@
+flowchart TD
+    subgraph facade[Facade package encryl]
+        API[Server, Conn, Emitter<br/>On, Emit, ACK]
+    end
+    subgraph slices[Vertical slices]
+        EV[event<br/>wire format and handlers]
+        RM[room<br/>rooms and fan-out]
+        CN[connection<br/>slot, state, queue]
+        TR[transport<br/>HTTP and WebSocket parsers]
+    end
+    subgraph kernel[Shared kernel]
+        RE[reactor<br/>one loop per core]
+        PL[platform<br/>io_uring and buffers]
+        TW[timerwheel<br/>deadlines]
+    end
+    API --> EV
+    API --> RM
+    API --> CN
+    EV --> CN
+    RM --> CN
+    TR --> RE
+    CN --> RE
+    CN --> PL
+    RE --> PL
+    RE --> TW

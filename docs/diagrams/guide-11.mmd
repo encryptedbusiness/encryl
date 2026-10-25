@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant P as Peer
+    participant K as Linux kernel
+    participant L as Loop
+    participant W as WebSocket parser
+    participant E as Event handler
+    participant R as Room engine
+    P->>K: binary WebSocket frame
+    K->>L: read completion
+    L->>W: bytes from the read buffer
+    W->>E: event ID and payload
+    E->>R: Emit to a room
+    R->>L: one frame per target loop
+    L->>K: send queue and send operation
+    K->>P: binary WebSocket frame

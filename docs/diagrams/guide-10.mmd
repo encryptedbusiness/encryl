@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant App as Your handler
+    participant S as Server
+    participant P as Peer
+    App->>S: EmitWithAck(event, payload)
+    S->>P: EVENT with request ID 42
+    P-->>S: ACK with request ID 42
+    S-->>App: callback with the answer
+    Note over S,App: No ACK before the deadline gives ErrAckTimeout

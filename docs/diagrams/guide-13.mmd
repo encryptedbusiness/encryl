@@ -1,0 +1,14 @@
+flowchart TD
+    A[encryl.go<br/>package documentation] --> B[server.go<br/>New and lifecycle]
+    B --> C[dispatch.go<br/>open, close, message]
+    B --> D[stats.go<br/>counters]
+    C --> E[events.go<br/>On, Use, UseConnect]
+    C --> F[emitter.go<br/>To, ToConns, Broadcast]
+    F --> G[internal/room<br/>directory, Self-Room, planner]
+    C --> H[internal/event<br/>envelope, registry, ACK]
+    G --> I[internal/connection<br/>slot, state, write queue]
+    H --> I
+    I --> J[internal/reactor<br/>loop and io_uring]
+    J --> K[internal/platform<br/>ring, tags, probe, buffers]
+    J --> L[internal/timerwheel<br/>deadlines]
+    I --> M[internal/transport<br/>HTTP upgrade, WebSocket parser]

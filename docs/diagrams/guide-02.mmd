@@ -1,0 +1,5 @@
+flowchart TD
+    M[1,000,000 open connections] --> A[10 connections send data]
+    M --> I[999,990 connections are idle]
+    I --> Z[An idle connection must hold no buffer]
+    A --> W[An active connection uses a small queue]

@@ -1,0 +1,9 @@
+flowchart LR
+    CALL[Emit to room] --> ENC[Encode one frame]
+    ENC --> REF[Frame with refcount]
+    REF --> L1[Loop 1 queue]
+    REF --> L2[Loop 2 queue]
+    REF --> L3[Loop 3 queue]
+    L1 --> C1[connections on loop 1]
+    L2 --> C2[connections on loop 2]
+    L3 --> C3[connections on loop 3]

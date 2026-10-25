@@ -1,0 +1,17 @@
+flowchart TD
+    subgraph named[Stored rooms]
+        A[Room: chat]
+        B[Room: alerts]
+    end
+    subgraph self[Implicit Self-Rooms]
+        SA[Self-Room of A]
+        SB[Self-Room of B]
+        SC[Self-Room of C]
+    end
+    CA[Connection A] --- SA
+    CB[Connection B] --- SB
+    CC[Connection C] --- SC
+    CA --- A
+    CB --- A
+    CB --- B
+    CC --- B

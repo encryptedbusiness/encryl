@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph old[Your branch]
+        I1[Self-Room idea]
+        I2[Room by name]
+        I3[Session ID per connection]
+        I4[io_uring]
+        I5[Buffer pool]
+    end
+    subgraph new[New server]
+        N1[Zero-cost Self-Room]
+        N2[Sharded room directory]
+        N3[Slot plus generation]
+        N4[io_uring only]
+        N5[Per-loop fixed arenas]
+    end
+    I1 --> N1
+    I2 --> N2
+    I3 --> N3
+    I4 --> N4
+    I5 --> N5

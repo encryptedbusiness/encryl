@@ -1,0 +1,7 @@
+flowchart TD
+    SEND[Send request] --> Q{Queue has room?}
+    Q -->|yes| ADD[Add frame to queue]
+    Q -->|no, reject policy| ERR[Return ErrBackpressure]
+    Q -->|no, drop policy| DROP[Drop the frame and count it]
+    Q -->|no, slow policy| CLOSE[Close the slow connection]
+    ADD --> SUB[Submit a send to io_uring]

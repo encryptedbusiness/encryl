@@ -1,0 +1,5 @@
+flowchart TD
+    ID[ConnID<br/>slot 7, generation 3] --> T[Connection table]
+    T --> S7[slot 7<br/>generation 3<br/>live]
+    OLD[Late message<br/>slot 7, generation 2] --> T
+    T -.->|generation does not match| DROP[Drop the message]
