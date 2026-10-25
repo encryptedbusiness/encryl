@@ -13,8 +13,8 @@ silently.
 
 ## Status
 
-The attached HTTP path and fd handoff are measured. The server can run under
-net/http, fasthttp, or Fiber without copying the socket payload.
+The high-level restructure is in. Public packages, map policy, and the HTTP
+benchmark are documented; the hot path and idle-memory results are unchanged.
 
 ## Quick start
 
@@ -207,6 +207,26 @@ Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
 | `BenchmarkProtoSendEcho100k` | 28,027 ns/op, 0 B/op, 0 allocs |
 | `PrepareUpgrade` | 0 allocs/op for the valid request matrix |
 | Attached hold | 6 minutes, 0 failures (not the 60-minute gate) |
+
+## HTTP benchmark
+
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, one vCPU / 2 GiB cgroup, wrk
+at 128 connections. Report:
+[`docs/benchmarks/2026-10-25-http-1c2g.md`](docs/benchmarks/2026-10-25-http-1c2g.md).
+
+| Transport | `/json` req/s | `/plaintext` req/s | `/json` p50 | `/json` p99 |
+| --------- | -----------: | -----------------: | ----------: | ----------: |
+| Fiber v3 / fasthttp | 269,777 | 270,815 | 0.471 ms | 1.02 ms |
+| httpuring raw HTTP/1.1 loop | **396,080** | **466,199** | **0.275 ms** | 5.99 ms |
+| chi on httpuring, inline | 337,196 | — | 0.34 ms | 3.53 ms |
+| httpuring + fasthttp | 104,838 | 105,174 | 1.20 ms | 1.74 ms |
+| standard net/http | 142,473 | 143,001 | 0.91 ms | 2.15 ms |
+| httpuring + net/http | 67,325 | 66,910 | 1.88 ms | 3.03 ms |
+
+The raw loop wins throughput and p50; Fiber wins the rare tail because its
+scheduler prevents one event loop from head-of-line blocking every connection.
+JSON is not the bottleneck: a custom stack-buffer writer is 12.8 ns/op, 0 B/op,
+0 allocs.
 
 ## Documentation
 
