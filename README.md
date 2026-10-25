@@ -13,8 +13,9 @@ silently.
 
 ## Status
 
-The high-level restructure is in. Public packages, map policy, and the HTTP
-benchmark are documented; the hot path and idle-memory results are unchanged.
+v0.9.0 release candidate. The native path, protobuf protocol, named events,
+HTTP integration, and benchmark suite are in. The open external check is
+Autobahn on an amd64 host; the arm64 guest cannot run the suite image.
 
 ## Quick start
 
@@ -228,12 +229,38 @@ scheduler prevents one event loop from head-of-line blocking every connection.
 JSON is not the bottleneck: a custom stack-buffer writer is 12.8 ns/op, 0 B/op,
 0 allocs.
 
+## Repository layout
+
+```text
+encryl.go, api.go   package documentation and stable public aliases
+internal/app/       facade: Server, Conn, config, dispatch, attach, lifecycle,
+                    events, emitters, stats
+event/              envelope, registry, middleware, ACKs
+room/               directory, Self-Room resolver, fan-out planner
+connslab/           slab, state machine, frames, write queue
+ws/, httpx/         RFC 6455 and HTTP upgrade parsers
+protocol/           protobuf codec, session, event names
+proto/              protobuf schema for external clients
+reactor/            io_uring loop, commands, timers, send path
+uring/, netio/      ring, tags, probe, listener, arenas
+httpuring/          HTTP/1.1 server and net.Listener adapter over uring
+timerwheel/         hierarchical deadlines
+adapters/           fasthttp and Fiber v3 modules
+bench/              codec, room, reactor, HTTP, and workload benchmarks
+examples/           echo, chat, HTTP, mux, uringhttp, Fiber
+scripts/            Linux runner, memory/scale gates, practical runs
+deploy/             Lima VM and host bootstrap
+docs/               architecture, protocol, ADRs, threat model, benchmarks
+```
+
 ## Documentation
 
 | Document | Contents |
 | -------- | -------- |
 | [architecture](docs/architecture.md) | ownership, buffers, timers, rooms, shutdown |
-| [protocol](docs/protocol.md) | native envelope, command protocol, close codes |
+| [protocol](docs/protocol.md) | native envelope, protobuf, close codes |
+| [events](docs/events.md) | named events, topics, borrowed payloads |
+| [frameworks](docs/frameworks.md) | net/http, fasthttp, Fiber ownership rules |
 | [threat model](docs/threat-model.md) | trust boundaries, trusted proxy, io_uring |
 | [operations](docs/operations.md) | tuning, metrics, runbooks |
 | [benchmarks](docs/benchmarks/README.md) | method and evidence rules |
