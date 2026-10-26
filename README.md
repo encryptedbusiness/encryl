@@ -13,9 +13,14 @@ silently.
 
 ## Status
 
-v0.9.0 release candidate. The native path, protobuf protocol, named events,
-HTTP integration, and benchmark suite are in. The open external check is
-Autobahn on an amd64 host; the arm64 guest cannot run the suite image.
+v0.9.x security review. The Origin allowlist, io_uring restrictions, threat
+model, security policy, and fuzz target are in. Allocation gates, security e2e,
+and the realtime e2e suite are landing.
+
+The server speaks plaintext `ws://`; TLS terminates upstream. io_uring is for
+trusted processes only: its request fields cannot be inspected by seccomp, so
+the process drops privileges after ring setup and registers an opcode
+allowlist.
 
 ## Quick start
 
