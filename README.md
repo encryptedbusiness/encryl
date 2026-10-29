@@ -13,14 +13,9 @@ silently.
 
 ## Status
 
-v0.9.x security review. The Origin allowlist, io_uring restrictions, threat
-model, security policy, and fuzz target are in. Allocation gates, security e2e,
-and the realtime e2e suite are landing.
-
-The server speaks plaintext `ws://`; TLS terminates upstream. io_uring is for
-trusted processes only: its request fields cannot be inspected by seccomp, so
-the process drops privileges after ring setup and registers an opcode
-allowlist.
+v0.9.x verification. Race, checkptr, allocation, fuzz, security, and realtime
+end-to-end suites are in. The remaining external check is Autobahn on an amd64
+host.
 
 ## Quick start
 
@@ -234,6 +229,18 @@ scheduler prevents one event loop from head-of-line blocking every connection.
 JSON is not the bottleneck: a custom stack-buffer writer is 12.8 ns/op, 0 B/op,
 0 allocs.
 
+The full gate is:
+
+```sh
+make fmt vet test test-race checkptr docs-check
+make cross
+make fuzz
+```
+
+`test-race` and `checkptr` run on the Linux VM. `make fuzz` covers the frame,
+upgrade, envelope, and protobuf decoders. Allocation gates in `event` and
+`connslab` fail the build if the hot path allocates.
+
 ## Repository layout
 
 ```text
@@ -271,23 +278,6 @@ docs/               architecture, protocol, ADRs, threat model, benchmarks
 | [benchmarks](docs/benchmarks/README.md) | method and evidence rules |
 | [ADRs](docs/adr) | decisions that constrain the code |
 | [contributing](docs/CONTRIBUTING.md) | build tags, allocation gates, review checklist |
-
-## Development
-
-```sh
-make fmt vet test test-race checkptr docs-check
-make cross
-make fuzz
-```
-
-Runtime work needs Linux 6.6+:
-
-```sh
-make limactl-up
-make preflight
-make test-uring
-make autobahn
-```
 
 ## License
 
