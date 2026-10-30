@@ -13,9 +13,8 @@ silently.
 
 ## Status
 
-v0.9.x verification. Race, checkptr, allocation, fuzz, security, and realtime
-end-to-end suites are in. The remaining external check is Autobahn on an amd64
-host.
+v1.0.0 release candidate. The production guide covers single-CPU and multi-CPU
+deployment, authentication, backpressure, and SQLite/geohash design.
 
 ## Quick start
 
@@ -277,7 +276,14 @@ docs/               architecture, protocol, ADRs, threat model, benchmarks
 | [operations](docs/operations.md) | tuning, metrics, runbooks |
 | [benchmarks](docs/benchmarks/README.md) | method and evidence rules |
 | [ADRs](docs/adr) | decisions that constrain the code |
+| [production guide](docs/high-performance-backend.md) | deployment, backpressure, SQLite/geohash |
 | [contributing](docs/CONTRIBUTING.md) | build tags, allocation gates, review checklist |
+
+## Production guide
+
+For single-CPU and multi-CPU deployment patterns, authentication, backpressure,
+SQLite/geohash design, and tuning, see
+[`docs/high-performance-backend.md`](docs/high-performance-backend.md).
 
 ## License
 
