@@ -1,7 +1,7 @@
 # HTTP handler + WebSocket upgrade on one io_uring listener
 
 Date: 2026-10-25
-Commit: working tree on `v2`
+Commit: working tree
 Host: `lima-encryl-dev`, Apple Silicon, VM 8 vCPU / 15.6 GiB
 Kernel: 6.8.0-147-generic
 Memory budget: server cgroup `MemoryMax=2G`, `CPUQuota=100%`

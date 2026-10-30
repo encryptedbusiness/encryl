@@ -1,7 +1,7 @@
 # Protobuf protocol v1: codec and end-to-end
 
 Date: 2026-10-23
-Commit: working tree on `v2` (protocol slice added)
+Commit: working tree (protocol slice added)
 Author: Sairash
 
 ## Environment
@@ -14,7 +14,7 @@ Author: Sairash
 | CPU | 8 vCPU |
 | Memory | 15.6 GiB |
 | Go | 1.27.2 |
-| Commit | working tree on `v2` |
+| Commit | working tree |
 | Date | 2026-10-23 |
 | Command | see Codec, End-to-end, and Fuzz below |
 | Raw | console output in this report |

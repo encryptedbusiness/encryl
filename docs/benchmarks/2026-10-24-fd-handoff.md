@@ -1,7 +1,7 @@
 # FD handoff: attached net/http, fasthttp, and Fiber
 
 Date: 2026-10-24
-Commit: working tree on `v2` (`5f894d8` plus the fd-handoff changes)
+Commit: working tree (`5d22909` plus the fd-handoff changes)
 Author: Sairash
 
 ## Environment

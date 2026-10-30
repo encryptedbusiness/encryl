@@ -29,7 +29,7 @@ density rows still require the io_uring reactor that M1 provides.
 | Host | Lima 2.2.1 (Apple Virtualization.framework), 4 vCPU, 7.7 GiB |
 | Kernel | 6.8.0-147-generic (Ubuntu 24.04) |
 | Go | 1.27.2 linux/arm64 |
-| Commit | `6d19e0f` |
+| Commit | `e62f4b8` |
 | Report | `docs/benchmarks/2026-10-22-m0-linux-verification.md` |
 
 ## Q1 — Is the io_uring backend worth keeping?

@@ -1,7 +1,7 @@
 # Restructure regression report
 
 Date: 2026-10-25
-Commit: working tree on `v2`
+Commit: working tree
 Host: `lima-encryl-dev`, Apple Silicon, 8 vCPU
 Kernel: 6.8.0-147-generic
 Memory: 15.6 GiB

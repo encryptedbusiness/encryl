@@ -17,7 +17,7 @@ decision records are `docs/adr/0001`–`0011`.
 | kTLS | `tls` module loaded, `/proc/net/tls_stat` present |
 | Sysctls | `net.core.somaxconn=65535`, `ip_local_port_range=10240 65535` |
 | Descriptor limits | soft 1024 / hard 1048576 in an SSH session; baseline script raises it |
-| Code verified | `25e35ed..03518b8` on `v2` |
+| Code verified | `0e723ab..bdfbdfe` on `v2` |
 
 The dev host is not the target hardware. All kernel-facing work runs in the VM;
 the macOS job only builds and unit-tests the portable code.
@@ -192,13 +192,13 @@ Full reports: `2026-10-22-v1-baseline.md` (200k canonical), `-20k`, `-50k`,
 
 | Commit | Contents |
 | ------ | -------- |
-| `f3800d4` | v2 module skeleton, public API, config, errors, backend contract |
-| `9d461dd` | M0 specification: roadmap, architecture, protocol, threat model, operations, migration, 11 ADRs |
-| `2343676` | io_uring and kTLS spikes, `internal/ktls`, vendored patched giouring, vectors |
-| `0de842e` | load generator, Lima config, scripts, CI skeleton |
-| `25e35ed` | lint configuration |
-| `6d19e0f` | spike fixes from this verification run |
-| `03518b8` | load generator and baseline-script fixes, benchmark reports, ADR amendments |
+| `4f14aec` | v2 module skeleton, public API, config, errors, backend contract |
+| `5ac70af` | M0 specification: roadmap, architecture, protocol, threat model, operations, migration, 11 ADRs |
+| `e62f4b8` | io_uring and kTLS spikes, `internal/ktls`, vendored patched giouring, vectors |
+| `fecf05b` | load generator, Lima config, scripts, CI skeleton |
+| `0e723ab` | lint configuration |
+| `e62f4b8` | spike fixes from this verification run |
+| `bdfbdfe` | load generator and baseline-script fixes, benchmark reports, ADR amendments |
 
 Nothing has been pushed.
 

@@ -1,7 +1,7 @@
 # Named events: hash cost and echo parity
 
 Date: 2026-10-23
-Commit: working tree on `v2` (named-event API added)
+Commit: working tree (named-event API added)
 Author: Sairash
 
 ## Environment
@@ -14,7 +14,7 @@ Author: Sairash
 | CPU | 8 vCPU |
 | Memory | 15.6 GiB |
 | Go | 1.27.2 |
-| Commit | working tree on `v2` |
+| Commit | working tree |
 | Date | 2026-10-23 |
 | Command | see below |
 | Raw | console output in this report |
