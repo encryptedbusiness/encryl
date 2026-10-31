@@ -10,11 +10,28 @@ write buffer. Buffers come from a per-loop arena only while a receive or a
 control send is in flight. The bounded write queue is the only per-connection
 queue, and a full queue returns an error instead of blocking or dropping
 silently.
+The target is a room with many listeners and few speakers. A million-member
+room may see ten messages a second; the other 999,990 connections must cost
+almost nothing. That constraint drives the slab, the per-loop arenas, and the
+bounded write queue.
 
 ## Status
 
-v1.0.0 release candidate. The production guide covers single-CPU and multi-CPU
-deployment, authentication, backpressure, and SQLite/geohash design.
+v1.0.0. The native path and the optional protobuf protocol share the
+event core. Native clients use `encryl.v2`; a client with no
+subprotocol negotiates protobuf. The public echo path is 0 B/op and
+0 allocs/op.
+
+## Results at a glance
+
+- 1M idle connections at **0.275 KiB total RSS/connection**; the gate delta is
+  0.241 KiB.
+- 1M echo shape with **exact in/out parity** (1,886,007 / 1,886,007), zero
+  write-queue drops, zero backpressure.
+- 60-minute 1M hold: **360,018,000** broadcast frames, zero drops, no fd growth.
+- 1M-member fan-out at one broadcast per second is a capacity limit on the
+  8-vCPU host (about 32.5% delivered); the five-second interval delivers 100%.
+- Autobahn cannot run in the arm64 guest because the suite image is amd64-only.
 
 ## Quick start
 
@@ -111,21 +128,20 @@ goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
 - The event registry is frozen at start. Dispatch is one atomic load and one map
   lookup, with no per-message lock.
 
-## M0 verification
+## Protobuf codec
 
-Ubuntu 24.04 / kernel 6.8.0-147 / arm64 / Go 1.27.2 in a Lima VM on Apple
-Silicon. Full log:
-[`docs/m0-execution-log.md`](docs/m0-execution-log.md).
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
+[`docs/benchmarks/2026-10-23-protobuf-protocol.md`](docs/benchmarks/2026-10-23-protobuf-protocol.md).
 
-| Check | Result |
-| ----- | ------ |
-| io_uring probe | all required opcodes and restrictions supported |
-| io_uring echo | 200 clients, 64 buffers, 200/200 echoed, zero errors |
-| kTLS userspace / TX / TX+RX | handshake and echo correct (historical; TLS is not part of the library) |
-| v1.0.2 idle density | 200,000 connections, 0 failed, 8.97 KiB process + 2.37 KiB slab per connection |
-
-The kTLS results are historical evidence. TLS terminates upstream; see
-[`ADR-0013`](docs/adr/0013-tls-terminates-upstream.md).
+| Path | Result |
+| ---- | ------ |
+| Decode publish, 64B payload | 40.0 ns, **0 B/op, 0 allocs/op** |
+| Decode 16-message batch | 746.6 ns, 0 B/op, 0 allocs/op |
+| Encode event push, 64B | 36.2 ns, 0 B/op, 0 allocs/op |
+| Encode Self-Room message | 25.6 ns, 0 B/op, 0 allocs/op |
+| End-to-end protobuf echo, 100k | 27.1 µs/op, 0 B/op, 0 allocs/op |
+| Native echo, same harness | 26.9 µs/op, 0 B/op, 0 allocs/op |
+| Decoder fuzz | 5.25M execs in 10 s, no crash |
 
 ## M2 measurements
 
@@ -166,21 +182,6 @@ Reports:
 | Group chat, 100k | 5,729,942 deliveries, p99 3 ms |
 | Churn | 4,839,786 cycles + 14,647,222 group deliveries, 0 failures |
 | EMQX 5.8.6, same fan-out shape | 6,000,000 / 6,000,000, 0 drops; 544.7 MiB vs 59.8 MB at 10k |
-
-## Protobuf codec
-
-Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
-[`docs/benchmarks/2026-10-23-protobuf-protocol.md`](docs/benchmarks/2026-10-23-protobuf-protocol.md).
-
-| Path | Result |
-| ---- | ------ |
-| Decode publish, 64B payload | 40.0 ns, **0 B/op, 0 allocs/op** |
-| Decode 16-message batch | 746.6 ns, 0 B/op, 0 allocs/op |
-| Encode event push, 64B | 36.2 ns, 0 B/op, 0 allocs/op |
-| Encode Self-Room message | 25.6 ns, 0 B/op, 0 allocs/op |
-| End-to-end protobuf echo, 100k | 27.1 µs/op, 0 B/op, 0 allocs/op |
-| Native echo, same harness | 26.9 µs/op, 0 B/op, 0 allocs/op |
-| Decoder fuzz | 5.25M execs in 10 s, no crash |
 
 ## Named events
 
@@ -227,6 +228,15 @@ The raw loop wins throughput and p50; Fiber wins the rare tail because its
 scheduler prevents one event loop from head-of-line blocking every connection.
 JSON is not the bottleneck: a custom stack-buffer writer is 12.8 ns/op, 0 B/op,
 0 allocs.
+
+## Limits
+
+- Linux 6.6+ and io_uring only. Containers that deny `io_uring_setup` fail at startup.
+- Plaintext `ws://` only; TLS terminates upstream.
+- A client with no subprotocol negotiates protobuf; native `encryl.v2` remains.
+- A 1M-member fan-out at one broadcast per second exceeds the 8-vCPU test host;
+  it is a capacity limit, not a correctness failure.
+- Autobahn has not run in the arm64 guest; the suite image is amd64-only.
 
 The full gate is:
 
