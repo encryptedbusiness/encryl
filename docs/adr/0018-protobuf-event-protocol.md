@@ -1,10 +1,13 @@
 # 0018 — A protobuf event protocol
 
-Status: Accepted
+Status: Superseded
 Date: 2026-10-23
-Deciders: Sairash
+Deciders: sairash
 Related: ADR-0003 (wire format), ADR-0014 (vertical slices), ADR-0015
 (Self-Rooms)
+
+> Historical record. ADR-0023 replaced this codec with Bebop, and the protobuf
+> codec was removed in 1.1.0. This ADR is retained as decision history only.
 
 ## Context
 
@@ -73,10 +76,9 @@ handling. The reactor gains one encoding byte on the slot and passes it to
 `OnOpen`; it has no protocol logic.
 
 The native v2 envelope stays behind the same seam as `EncodingNative` for one
-release. New connections that offer `encryl.pb.v1` (or
-`?format=protobuf`) use the protobuf codec; a connection that offers neither
-negotiates protobuf v1 by default. Connections that offer `encryl.v2`
-keep the native path.
+release. Connections that offer `encryl.pb.v1` (or `?format=protobuf`) use the
+protobuf codec. Connections that offer `encryl.v2` keep the native path. A
+connection that offers neither now negotiates Bebop by default; see ADR-0023.
 
 ### 5. Zero allocations on the hot path
 
@@ -84,8 +86,8 @@ keep the native path.
   name to the receive buffer.
 - The hot encoder writes into a pooled `connection.Frame`; it does not allocate
   per recipient.
-- The fan-out encodes once per encoding. Native and protobuf recipients get one
-  frame each per send, never one per recipient.
+- The fan-out encodes once per encoding. Native, Bebop, and protobuf recipients
+  get one frame each per send, never one per recipient.
 - The session, decoder scratch, and frame come from pools.
 - Control messages (connect, subscribe, names, tokens) may allocate. They are
   not on the message hot path.

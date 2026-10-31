@@ -51,7 +51,7 @@ func (t *Topic) ID() uint32 {
 }
 
 // Register adds the name to the server's name registry. On and OnRequest do it
-// automatically. It is needed for a protobuf client that publishes by name
+// automatically. It is needed for a Bebop client that publishes by name
 // while no Go handler is bound.
 func (t *Topic) Register() error {
 	if t == nil || t.srv == nil {

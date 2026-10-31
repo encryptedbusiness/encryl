@@ -1,0 +1,120 @@
+// Bebop schema for the encryl event protocol.
+//
+// The wire format follows Bebop: fixed-width little-endian integers, uint32
+// lengths for strings/bytes/arrays, and 1-byte enums/bools. The production
+// codec in protocol/bebop.go is hand-written for the zero-allocation hot path.
+//
+// The top-level records use a one-byte presence bitmap instead of a generated
+// struct's always-present fields: a zero-valued field costs no bytes. Server
+// frames start with a frame-type byte (0 = reply, 2 = push). The exact bit
+// assignments are in protocol/bebop.go.
+//
+// This file documents the semantic records; it is not passed to bebopc.
+
+enum CommandKind: byte {
+  None = 0;
+  Connect = 1;
+  Subscribe = 2;
+  Unsubscribe = 3;
+  Publish = 4;
+  Send = 5;
+  Ack = 6;
+  Pong = 7;
+}
+
+enum ReplyKind: byte {
+  None = 0;
+  Connect = 1;
+  Subscribe = 2;
+  Publish = 3;
+  Ack = 4;
+  Push = 5;
+}
+
+enum PushKind: byte {
+  None = 0;
+  Event = 1;
+  Message = 2;
+  Join = 3;
+  Leave = 4;
+  Disconnect = 5;
+  Request = 6;
+}
+
+struct Connect {
+  string token;
+  string client;
+  string version;
+  string[] subscriptions;
+}
+
+struct Subscribe { string room; }
+struct Unsubscribe { uint32 roomId; }
+
+struct Publish {
+  uint32 roomId;
+  string room;
+  uint32 eventId;
+  string eventName;
+  byte[] payload;
+  uint64 requestId;
+}
+
+struct Send {
+  uint32 eventId;
+  string eventName;
+  byte[] payload;
+  uint64 requestId;
+}
+
+struct Ack {
+  uint64 token;
+  byte[] payload;
+}
+
+struct ConnectResult {
+  string clientId;
+  uint32 pingSeconds;
+  bool pong;
+  SubscribeResult[] subscriptions;
+}
+
+struct SubscribeResult {
+  uint32 roomId;
+  uint32 eventId;
+}
+
+struct Error {
+  uint32 code;
+  byte[] message;
+  bool temporary;
+}
+
+struct EventPush {
+  uint32 roomId;
+  string room;
+  uint32 eventId;
+  byte[] payload;
+  uint64 requestId;
+  uint64 offset;
+}
+
+struct Message {
+  uint32 eventId;
+  byte[] payload;
+  uint64 requestId;
+}
+
+struct Join { uint32 roomId; }
+struct Leave { uint32 roomId; }
+
+struct Disconnect {
+  uint32 code;
+  string reason;
+}
+
+struct Request {
+  uint64 token;
+  uint32 eventId;
+  byte[] payload;
+}

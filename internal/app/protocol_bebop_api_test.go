@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func testProtoConfig() Config {
+func testBebopConfig() Config {
 	cfg := testServerConfig()
 	cfg.EventNames = map[string]uint32{
 		"chat.message": 1024,
@@ -21,11 +21,11 @@ func testProtoConfig() Config {
 	return cfg
 }
 
-func dialProto(t *testing.T, url string) *websocket.Conn {
+func dialBebop(t *testing.T, url string) *websocket.Conn {
 	t.Helper()
 	d := websocket.Dialer{
 		HandshakeTimeout: 2 * time.Second,
-		Subprotocols:     []string{protocol.SubprotocolProtobufV1},
+		Subprotocols:     []string{protocol.SubprotocolBebopV1},
 	}
 	c, resp, err := d.Dial(url, nil)
 	if resp != nil && resp.Body != nil {
@@ -34,7 +34,7 @@ func dialProto(t *testing.T, url string) *websocket.Conn {
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
-	if got := c.Subprotocol(); got != protocol.SubprotocolProtobufV1 {
+	if got := c.Subprotocol(); got != protocol.SubprotocolBebopV1 {
 		_ = c.Close()
 		t.Fatalf("subprotocol = %q", got)
 	}
@@ -42,39 +42,39 @@ func dialProto(t *testing.T, url string) *websocket.Conn {
 	return c
 }
 
-func writeProto(t *testing.T, c *websocket.Conn, cmds ...protocol.Command) {
+func writeBebop(t *testing.T, c *websocket.Conn, cmds ...protocol.Command) {
 	t.Helper()
 	var frame []byte
 	for i := range cmds {
-		frame = protocol.AppendFramedCommand(frame, &cmds[i])
+		frame = protocol.AppendFramedCommandBebop(frame, &cmds[i])
 	}
 	if err := c.WriteMessage(websocket.BinaryMessage, frame); err != nil {
 		t.Fatalf("WriteMessage: %v", err)
 	}
 }
 
-func readProto(t *testing.T, c *websocket.Conn) []protocol.Reply {
+func readBebop(t *testing.T, c *websocket.Conn) []protocol.Reply {
 	t.Helper()
 	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, data, err := c.ReadMessage()
 	if err != nil {
 		t.Fatalf("ReadMessage: %v", err)
 	}
-	replies, err := protocol.DecodeReplies(data, nil)
+	replies, err := protocol.DecodeBebopReplies(data, nil)
 	if err != nil {
-		t.Fatalf("DecodeReplies: %v", err)
+		t.Fatalf("DecodeBebopReplies: %v", err)
 	}
 	return replies
 }
 
-func connectProto(t *testing.T, c *websocket.Conn) protocol.ConnectResult {
+func connectBebop(t *testing.T, c *websocket.Conn) protocol.ConnectResult {
 	t.Helper()
-	writeProto(t, c, protocol.Command{
+	writeBebop(t, c, protocol.Command{
 		ID:      1,
 		Kind:    protocol.CommandConnect,
 		Connect: protocol.Connect{Client: []byte("test"), Version: []byte("1")},
 	})
-	for _, r := range readProto(t, c) {
+	for _, r := range readBebop(t, c) {
 		if r.ID == 1 && r.Kind == protocol.ReplyConnect {
 			if r.Error != nil {
 				t.Fatalf("connect error = %+v", r.Error)
@@ -86,14 +86,14 @@ func connectProto(t *testing.T, c *websocket.Conn) protocol.ConnectResult {
 	return protocol.ConnectResult{}
 }
 
-func subscribeProto(t *testing.T, c *websocket.Conn, id uint32, room string) protocol.SubscribeResult {
+func subscribeBebop(t *testing.T, c *websocket.Conn, id uint32, room string) protocol.SubscribeResult {
 	t.Helper()
-	writeProto(t, c, protocol.Command{
+	writeBebop(t, c, protocol.Command{
 		ID:        id,
 		Kind:      protocol.CommandSubscribe,
 		Subscribe: protocol.Subscribe{Room: []byte(room)},
 	})
-	for _, r := range readProto(t, c) {
+	for _, r := range readBebop(t, c) {
 		if r.ID == id && r.Kind == protocol.ReplySubscribe {
 			if r.Error != nil {
 				t.Fatalf("subscribe error = %+v", r.Error)
@@ -105,28 +105,28 @@ func subscribeProto(t *testing.T, c *websocket.Conn, id uint32, room string) pro
 	return protocol.SubscribeResult{}
 }
 
-func TestProtoConnectSubscribePublish(t *testing.T) {
-	srv, err := New(testProtoConfig())
+func TestBebopConnectSubscribePublish(t *testing.T) {
+	srv, err := New(testBebopConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	opened := openedConns(srv)
 	url := startTestServer(t, srv)
 
-	a := dialProto(t, url)
+	a := dialBebop(t, url)
 	<-opened
-	b := dialProto(t, url)
+	b := dialBebop(t, url)
 	<-opened
 
-	connectProto(t, a)
-	connectProto(t, b)
-	sub := subscribeProto(t, a, 2, "room")
+	connectBebop(t, a)
+	connectBebop(t, b)
+	sub := subscribeBebop(t, a, 2, "room")
 	if sub.RoomID == 0 || sub.EventID != 1024 {
 		t.Fatalf("subscribe = %+v", sub)
 	}
-	subscribeProto(t, b, 2, "room")
+	subscribeBebop(t, b, 2, "room")
 
-	writeProto(t, a, protocol.Command{
+	writeBebop(t, a, protocol.Command{
 		ID:   3,
 		Kind: protocol.CommandPublish,
 		Publish: protocol.Publish{
@@ -135,7 +135,7 @@ func TestProtoConnectSubscribePublish(t *testing.T) {
 		},
 	})
 
-	replies := readProto(t, b)
+	replies := readBebop(t, b)
 	if len(replies) != 1 || replies[0].Kind != protocol.ReplyPush || replies[0].Push.Kind != protocol.PushEvent {
 		t.Fatalf("b replies = %+v", replies)
 	}
@@ -144,10 +144,9 @@ func TestProtoConnectSubscribePublish(t *testing.T) {
 		t.Fatalf("event push = %+v", push)
 	}
 
-	// The publisher receives the event push and its publish reply.
 	seenPush, seenReply := false, false
 	for i := 0; i < 2; i++ {
-		for _, r := range readProto(t, a) {
+		for _, r := range readBebop(t, a) {
 			if r.Kind == protocol.ReplyPush && r.Push.Kind == protocol.PushEvent {
 				seenPush = true
 			}
@@ -161,53 +160,21 @@ func TestProtoConnectSubscribePublish(t *testing.T) {
 	}
 }
 
-func TestProtoHandlerReply(t *testing.T) {
-	cfg := testProtoConfig()
-	srv, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := srv.OnID(2048, func(c *Conn, m Message) error {
-		return c.Reply(m, []byte("pong"))
-	}); err != nil {
-		t.Fatal(err)
-	}
-	url := startTestServer(t, srv)
-	c := dialProto(t, url)
-	connectProto(t, c)
-
-	writeProto(t, c, protocol.Command{
-		ID:      4,
-		Kind:    protocol.CommandPublish,
-		Publish: protocol.Publish{Event: protocol.EventRef{ID: 2048}, Payload: []byte("ping")},
-	})
-	for _, r := range readProto(t, c) {
-		if r.ID == 4 && r.Kind == protocol.ReplyAck {
-			if string(r.Ack.Payload) != "pong" {
-				t.Fatalf("ack = %+v", r.Ack)
-			}
-			return
-		}
-	}
-	t.Fatal("reply not received")
-}
-
-func TestProtoSelfRoomAndAck(t *testing.T) {
-	cfg := testProtoConfig()
-	srv, err := New(cfg)
+func TestBebopSelfRoomAndAck(t *testing.T) {
+	srv, err := New(testBebopConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	opened := openedConns(srv)
 	url := startTestServer(t, srv)
-	c := dialProto(t, url)
+	c := dialBebop(t, url)
 	sc := <-opened
-	connectProto(t, c)
+	connectBebop(t, c)
 
 	if err := sc.EmitID(2048, []byte("self")); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
-	replies := readProto(t, c)
+	replies := readBebop(t, c)
 	if len(replies) != 1 || replies[0].Push.Kind != protocol.PushMessage {
 		t.Fatalf("self replies = %+v", replies)
 	}
@@ -221,7 +188,7 @@ func TestProtoSelfRoomAndAck(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("EmitWithAck: %v", err)
 	}
-	replies = readProto(t, c)
+	replies = readBebop(t, c)
 	if len(replies) != 1 || replies[0].Push.Kind != protocol.PushRequest {
 		t.Fatalf("request push = %+v", replies)
 	}
@@ -229,7 +196,7 @@ func TestProtoSelfRoomAndAck(t *testing.T) {
 	if req.Token == 0 || req.EventID != 2048 {
 		t.Fatalf("request = %+v", req)
 	}
-	writeProto(t, c, protocol.Command{
+	writeBebop(t, c, protocol.Command{
 		Kind: protocol.CommandAck,
 		Ack:  protocol.Ack{Token: req.Token, Payload: []byte("answer")},
 	})
@@ -243,8 +210,41 @@ func TestProtoSelfRoomAndAck(t *testing.T) {
 	}
 }
 
-func TestProtoAndNativeRoomFanout(t *testing.T) {
-	srv, err := New(testProtoConfig())
+func TestBebopHandlerReply(t *testing.T) {
+	srv, err := New(testBebopConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.OnID(2048, func(c *Conn, m Message) error {
+		return c.Reply(m, []byte("pong"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	url := startTestServer(t, srv)
+	c := dialBebop(t, url)
+	connectBebop(t, c)
+
+	writeBebop(t, c, protocol.Command{
+		ID:   4,
+		Kind: protocol.CommandPublish,
+		Publish: protocol.Publish{
+			Event:   protocol.EventRef{ID: 2048},
+			Payload: []byte("ping"),
+		},
+	})
+	for _, r := range readBebop(t, c) {
+		if r.ID == 4 && r.Kind == protocol.ReplyAck {
+			if string(r.Ack.Payload) != "pong" {
+				t.Fatalf("ack = %+v", r.Ack)
+			}
+			return
+		}
+	}
+	t.Fatal("reply not received")
+}
+
+func TestBebopAndNativeRoomFanout(t *testing.T) {
+	srv, err := New(testBebopConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestProtoAndNativeRoomFanout(t *testing.T) {
 	}
 	url := startTestServer(t, srv)
 	native := dialWS(t, url)
-	pb := dialProto(t, url)
+	bb := dialBebop(t, url)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for srv.Stats().Memberships < 2 && time.Now().Before(deadline) {
@@ -272,49 +272,49 @@ func TestProtoAndNativeRoomFanout(t *testing.T) {
 		t.Fatalf("native event = %+v", e)
 	}
 
-	for _, r := range readProto(t, pb) {
+	for _, r := range readBebop(t, bb) {
 		if r.Push.Kind != protocol.PushEvent {
 			continue
 		}
 		push := r.Push.Event
 		if string(push.Room) != "room" || push.EventID != 1024 || string(push.Payload) != "fanout" {
-			t.Fatalf("proto push = %+v", push)
+			t.Fatalf("bebop push = %+v", push)
 		}
 		return
 	}
-	t.Fatal("protobuf client did not receive the room push")
+	t.Fatal("bebop client did not receive the room push")
 }
 
-func TestProtoServerSideSubscription(t *testing.T) {
-	srv, err := New(testProtoConfig())
+func TestBebopBroadcastIsEncodingFiltered(t *testing.T) {
+	srv, err := New(testServerConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	url := startTestServer(t, srv)
-	c := dialProto(t, url)
 
-	writeProto(t, c, protocol.Command{
-		ID:      1,
-		Kind:    protocol.CommandConnect,
-		Connect: protocol.Connect{Subscriptions: [][]byte{[]byte("room")}},
-	})
-	var result protocol.ConnectResult
-	for _, r := range readProto(t, c) {
-		if r.ID == 1 && r.Kind == protocol.ReplyConnect {
-			result = r.Connect
-		}
+	native := dialWS(t, url)
+	bb := dialBebop(t, url)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for srv.Stats().ConnectionsOpen < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
 	}
-	if len(result.Subscriptions) != 1 || result.Subscriptions[0].EventID != 1024 {
-		t.Fatalf("connect result = %+v", result)
+	if got := srv.Stats().ConnectionsOpen; got < 2 {
+		t.Fatalf("connections open = %d", got)
 	}
 
-	if err := srv.To("room").EmitID(1024, []byte("after-connect")); err != nil {
-		t.Fatalf("Emit: %v", err)
+	if err := srv.EmitID(1024, []byte("all")); err != nil {
+		t.Fatalf("EmitID: %v", err)
 	}
-	for _, r := range readProto(t, c) {
-		if r.Push.Kind == protocol.PushEvent && string(r.Push.Event.Payload) == "after-connect" {
-			return
-		}
+
+	e := readEnvelope(t, native)
+	if e.Event != 1024 || string(e.Payload) != "all" {
+		t.Fatalf("native event = %+v", e)
 	}
-	t.Fatal("server-side subscription did not receive the push")
+
+	bbReplies := readBebop(t, bb)
+	if len(bbReplies) != 1 || bbReplies[0].Push.Kind != protocol.PushEvent ||
+		string(bbReplies[0].Push.Event.Payload) != "all" {
+		t.Fatalf("bebop replies = %+v", bbReplies)
+	}
 }

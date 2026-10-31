@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-22
-Deciders: Sairash
+Deciders: sairash
 
 Supersedes [0002](0002-tls-and-ktls.md).
 

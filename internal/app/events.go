@@ -191,7 +191,7 @@ func (s *Server) OnDisconnect(h DisconnectHandler) error {
 }
 
 // RegisterEvent adds a string event name before the server starts. On and
-// OnRequest call it automatically. It is useful for a protobuf client that
+// OnRequest call it automatically. It is useful for a Bebop client that
 // publishes by name while no Go handler is bound.
 func (s *Server) RegisterEvent(name string, id uint32) error {
 	if err := s.registerBeforeStart("RegisterEvent"); err != nil {

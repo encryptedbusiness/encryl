@@ -131,12 +131,12 @@ func (e Emitter) dispatch(eventID uint32, payload []byte, requestID uint64) erro
 
 func (e Emitter) dispatchAll(st *serverState, eventID uint32, payload []byte, requestID uint64, except []connection.Ref) error {
 	s := e.srv
-	var native, proto *connection.Frame
+	var native, bb *connection.Frame
 	if s.connCounts[0].Load() > 0 {
 		native = e.nativeFrame(eventID, payload, requestID)
 	}
 	if s.connCounts[1].Load() > 0 {
-		proto = e.protoEventFrame("", eventID, payload, requestID)
+		bb = e.bebopEventFrame("", eventID, payload, requestID)
 	}
 	firstErr := error(nil)
 	for _, l := range st.loops {
@@ -159,18 +159,18 @@ func (e Emitter) dispatchAll(st *serverState, eventID uint32, payload []byte, re
 				firstErr = ErrBackpressure
 			}
 		}
-		if proto != nil {
-			proto.Retain()
+		if bb != nil {
+			bb.Retain()
 			cmd := reactor.Command{
 				Kind:          reactor.CmdBroadcast,
-				Encoding:      1,
-				Frame:         proto,
+				Encoding:      uint8(protocol.EncodingBebopV1),
+				Frame:         bb,
 				Except:        except,
 				SelfExcept:    e.selfRef,
 				HasSelfExcept: e.hasSelf,
 			}
 			if !l.Enqueue(cmd) {
-				proto.Release()
+				bb.Release()
 				s.backpressure.Add(1)
 				firstErr = ErrBackpressure
 			}
@@ -179,15 +179,15 @@ func (e Emitter) dispatchAll(st *serverState, eventID uint32, payload []byte, re
 	if native != nil {
 		native.Release()
 	}
-	if proto != nil {
-		proto.Release()
+	if bb != nil {
+		bb.Release()
 	}
 	return firstErr
 }
 
 func (e Emitter) dispatchIDs(st *serverState, except []connection.Ref, eventID uint32, payload []byte, requestID uint64) error {
 	native := room.AcquirePlanner()
-	proto := room.AcquirePlanner()
+	bb := room.AcquirePlanner()
 	for _, id := range e.ids {
 		ref, ok := room.SelfRef(connection.ID{Slot: id.Slot, Gen: id.Gen}, st.perLoop)
 		if !ok || e.excludes(except, ref) {
@@ -197,8 +197,8 @@ func (e Emitter) dispatchIDs(st *serverState, except []connection.Ref, eventID u
 		if c == nil {
 			continue
 		}
-		if c.encoding == protocol.EncodingProtobufV1 {
-			proto.Add(ref)
+		if c.encoding == protocol.EncodingBebopV1 {
+			bb.Add(ref)
 		} else {
 			native.Add(ref)
 		}
@@ -209,20 +209,20 @@ func (e Emitter) dispatchIDs(st *serverState, except []connection.Ref, eventID u
 			firstErr = err
 		}
 	}
-	if !proto.Empty() {
-		if err := e.srv.dispatchGroups(st, proto.Groups(), e.protoMessageFrame(eventID, payload, requestID)); err != nil && firstErr == nil {
+	if !bb.Empty() {
+		if err := e.srv.dispatchGroups(st, bb.Groups(), e.bebopMessageFrame(eventID, payload, requestID)); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 	native.Release()
-	proto.Release()
+	bb.Release()
 	return firstErr
 }
 
 func (e Emitter) dispatchRoom(st *serverState, name string, except []connection.Ref, eventID uint32, payload []byte, requestID uint64) error {
 	s := e.srv
 	native := room.AcquirePlanner()
-	proto := room.AcquirePlanner()
+	bb := room.AcquirePlanner()
 
 	p := refScratchPool.Get().(*[]connection.Ref)
 	refs := (*p)[:0]
@@ -235,8 +235,8 @@ func (e Emitter) dispatchRoom(st *serverState, name string, except []connection.
 		if c == nil {
 			continue
 		}
-		if c.encoding == protocol.EncodingProtobufV1 {
-			proto.Add(ref)
+		if c.encoding == protocol.EncodingBebopV1 {
+			bb.Add(ref)
 		} else {
 			native.Add(ref)
 		}
@@ -250,13 +250,13 @@ func (e Emitter) dispatchRoom(st *serverState, name string, except []connection.
 			firstErr = err
 		}
 	}
-	if !proto.Empty() {
-		if err := s.dispatchGroups(st, proto.Groups(), e.protoEventFrame(name, eventID, payload, requestID)); err != nil && firstErr == nil {
+	if !bb.Empty() {
+		if err := s.dispatchGroups(st, bb.Groups(), e.bebopEventFrame(name, eventID, payload, requestID)); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 	native.Release()
-	proto.Release()
+	bb.Release()
 	return firstErr
 }
 
@@ -306,15 +306,15 @@ func (e Emitter) nativeFrame(eventID uint32, payload []byte, requestID uint64) *
 	return f
 }
 
-func (e Emitter) protoMessageFrame(eventID uint32, payload []byte, requestID uint64) *connection.Frame {
+func (e Emitter) bebopMessageFrame(eventID uint32, payload []byte, requestID uint64) *connection.Frame {
 	p := protocol.Push{
 		Kind:    protocol.PushMessage,
 		Message: protocol.Message{EventID: eventID, Payload: payload, RequestID: requestID},
 	}
-	return e.protoFrame(&p)
+	return e.bebopFrame(&p)
 }
 
-func (e Emitter) protoEventFrame(roomName string, eventID uint32, payload []byte, requestID uint64) *connection.Frame {
+func (e Emitter) bebopEventFrame(roomName string, eventID uint32, payload []byte, requestID uint64) *connection.Frame {
 	p := protocol.Push{
 		Kind: protocol.PushEvent,
 		Event: protocol.EventPush{
@@ -324,13 +324,13 @@ func (e Emitter) protoEventFrame(roomName string, eventID uint32, payload []byte
 			RequestID: requestID,
 		},
 	}
-	return e.protoFrame(&p)
+	return e.bebopFrame(&p)
 }
 
-func (e Emitter) protoFrame(p *protocol.Push) *connection.Frame {
-	size := protocol.FramedPushSize(p)
+func (e Emitter) bebopFrame(p *protocol.Push) *connection.Frame {
+	size := protocol.FramedPushSizeBebop(p)
 	f, h := connection.NewFrameWithHeader(size)
-	out := protocol.AppendFramedPush(f.Buf[h:h], p)
+	out := protocol.AppendFramedPushBebop(f.Buf[h:h], p)
 	f.Buf = f.Buf[:h+len(out)]
 	f.Counted = true
 	f.Volatile = e.volatile

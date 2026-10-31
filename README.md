@@ -17,10 +17,9 @@ bounded write queue.
 
 ## Status
 
-v1.0.0. The native path and the optional protobuf protocol share the
-event core. Native clients use `encryl.v2`; a client with no
-subprotocol negotiates protobuf. The public echo path is 0 B/op and
-0 allocs/op.
+v1.1.0. Bebop is the only client event codec; the native
+`encryl.v2` envelope stays for the built-in path. The public echo path
+is 0 B/op and 0 allocs/op.
 
 ## Results at a glance
 
@@ -98,16 +97,17 @@ supported.
 Two encodings share the same event core:
 
 - `encryl.v2` is the native 16-byte envelope: version, kind, flags, event ID,
-  request ID, then the opaque payload. Native clients use it.
-- `encryl.pb.v1` (or `?format=protobuf`) selects the protobuf command protocol.
-  It is a small command/reply/push subset inspired by Centrifuge, not
-  wire-compatible with Centrifuge or Grafana Live. A connection that offers no
-  subprotocol negotiates protobuf by default.
+  request ID, then the opaque payload. It stays for the built-in path.
+- `encryl.bebop.v1` (or `?format=bebop`) is the only client event codec. A
+  connection with no subprotocol negotiates Bebop. The format uses Bebop's
+  fixed-width little-endian values with a one-byte presence bitmap, so absent
+  fields cost nothing. Pushes use a one-byte frame type and skip the reply ID.
 
 One WebSocket binary message carries one or more varint-length-delimited
-messages. Client commands get a reply with the same ID; asynchronous pushes
-ride a reply with ID 0. The codec is hand-written and zero-allocation on the hot
-path. The wire limits and close codes are in `docs/protocol.md` once the M0 documentation lands.
+messages. Client commands get a reply with the same ID; pushes carry their own
+frame type. The codec is hand-written and zero-allocation. See
+[`docs/protocol.md`](docs/protocol.md) and
+[`ADR-0023`](docs/adr/0023-bebop-default.md).
 
 ## How it works
 
@@ -128,22 +128,25 @@ goroutine. Cross-loop work is a command to the owning loop, not a shared lock.
 - The event registry is frozen at start. Dispatch is one atomic load and one map
   lookup, with no per-message lock.
 
-## Protobuf codec
+## Bebop codec
 
-Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
-[`docs/benchmarks/2026-10-23-protobuf-protocol.md`](docs/benchmarks/2026-10-23-protobuf-protocol.md).
+Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Full data:
+[`docs/benchmarks/`](docs/benchmarks/) and
+[`ADR-0023`](docs/adr/0023-bebop-default.md).
 
 | Path | Result |
 | ---- | ------ |
-| Decode publish, 64B payload | 40.0 ns, **0 B/op, 0 allocs/op** |
-| Decode 16-message batch | 746.6 ns, 0 B/op, 0 allocs/op |
-| Encode event push, 64B | 36.2 ns, 0 B/op, 0 allocs/op |
-| Encode Self-Room message | 25.6 ns, 0 B/op, 0 allocs/op |
-| End-to-end protobuf echo, 100k | 27.1 µs/op, 0 B/op, 0 allocs/op |
-| Native echo, same harness | 26.9 µs/op, 0 B/op, 0 allocs/op |
-| Decoder fuzz | 5.25M execs in 10 s, no crash |
+| Decode publish, 64B | **10.6 ns**, 0 B/op, 0 allocs |
+| Decode 16-message batch | **162.6 ns**, 0 B/op, 0 allocs |
+| Encode event push, 64B | **17.9 ns**, 0 B/op, 0 allocs |
+| Encode Self-Room push, 64B | **15.8 ns**, 0 B/op, 0 allocs |
+| Fan-out to 1000 recipients | **1696 ns**, 0 B/op, 0 allocs |
+| Event-push wire size | **84 B** |
 
-## M2 measurements
+Bebop decodes 3.3x faster than the previous codec and encodes pushes 15-19%
+faster, with 2.7-6.4% more bytes on the wire.
+
+## Message path
 
 Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU Lima VM. Method and raw
 data: [`docs/benchmarks/2026-10-23-m2-vertical-slices.md`](docs/benchmarks/2026-10-23-m2-vertical-slices.md).
@@ -164,7 +167,7 @@ data: [`docs/benchmarks/2026-10-23-m2-vertical-slices.md`](docs/benchmarks/2026-
 | 10k room fan-out, 1/s | 195,692 frames in 20 s |
 | Struct sizes | Slot 160 B, Conn 88 B, Accounting 32 B, Frame 48 B |
 
-## M3 measurements
+## Scale
 
 Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU / 15.6 GiB Lima VM.
 Reports:
@@ -205,9 +208,11 @@ Ubuntu 24.04 / kernel 6.8 / arm64 / Go 1.27.2, 8 vCPU. Report:
 | `BenchmarkServerEcho100k` | 27,731 ns/op, 0 B/op, 0 allocs |
 | `BenchmarkStringEcho100k` | 27,619 ns/op, 0 B/op, 0 allocs |
 | `BenchmarkTopicEcho100k` | 27,377 ns/op, 0 B/op, 0 allocs |
-| `BenchmarkProtoSendEcho100k` | 28,027 ns/op, 0 B/op, 0 allocs |
 | `PrepareUpgrade` | 0 allocs/op for the valid request matrix |
 | Attached hold | 6 minutes, 0 failures (not the 60-minute gate) |
+
+The attached path is codec-independent; the Bebop codec table above covers the
+message path.
 
 ## HTTP benchmark
 
@@ -233,7 +238,7 @@ JSON is not the bottleneck: a custom stack-buffer writer is 12.8 ns/op, 0 B/op,
 
 - Linux 6.6+ and io_uring only. Containers that deny `io_uring_setup` fail at startup.
 - Plaintext `ws://` only; TLS terminates upstream.
-- A client with no subprotocol negotiates protobuf; native `encryl.v2` remains.
+- Bebop is the only client wire codec. There is no JSON wire format.
 - A 1M-member fan-out at one broadcast per second exceeds the 8-vCPU test host;
   it is a capacity limit, not a correctness failure.
 - Autobahn has not run in the arm64 guest; the suite image is amd64-only.
@@ -247,7 +252,7 @@ make fuzz
 ```
 
 `test-race` and `checkptr` run on the Linux VM. `make fuzz` covers the frame,
-upgrade, envelope, and protobuf decoders. Allocation gates in `event` and
+upgrade, envelope, and Bebop decoders. Allocation gates in `event` and
 `connslab` fail the build if the hot path allocates.
 
 ## Repository layout
@@ -260,8 +265,7 @@ event/              envelope, registry, middleware, ACKs
 room/               directory, Self-Room resolver, fan-out planner
 connslab/           slab, state machine, frames, write queue
 ws/, httpx/         RFC 6455 and HTTP upgrade parsers
-protocol/           protobuf codec, session, event names
-proto/              protobuf schema for external clients
+protocol/           Bebop codec, session, event names
 reactor/            io_uring loop, commands, timers, send path
 uring/, netio/      ring, tags, probe, listener, arenas
 httpuring/          HTTP/1.1 server and net.Listener adapter over uring
@@ -279,14 +283,14 @@ docs/               architecture, protocol, ADRs, threat model, benchmarks
 | Document | Contents |
 | -------- | -------- |
 | [architecture](docs/architecture.md) | ownership, buffers, timers, rooms, shutdown |
-| [protocol](docs/protocol.md) | native envelope, protobuf, close codes |
+| [protocol](docs/protocol.md) | native envelope, Bebop, close codes |
 | [events](docs/events.md) | named events, topics, borrowed payloads |
 | [frameworks](docs/frameworks.md) | net/http, fasthttp, Fiber ownership rules |
 | [threat model](docs/threat-model.md) | trust boundaries, trusted proxy, io_uring |
 | [operations](docs/operations.md) | tuning, metrics, runbooks |
 | [benchmarks](docs/benchmarks/README.md) | method and evidence rules |
-| [ADRs](docs/adr) | decisions that constrain the code |
 | [production guide](docs/high-performance-backend.md) | deployment, backpressure, SQLite/geohash |
+| [ADRs](docs/adr) | decisions that constrain the code |
 | [contributing](docs/CONTRIBUTING.md) | build tags, allocation gates, review checklist |
 
 ## Production guide

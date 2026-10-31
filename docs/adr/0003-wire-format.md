@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-22
-Deciders: Sairash
+Deciders: sairash
 
 ## Context
 
@@ -56,7 +56,7 @@ TypeScript clients.
   an implicit schema with no compile-time checking.
 - **MessagePack/CBOR.** Still requires a schema-less decode and allocation;
   numeric IDs in a fixed header are strictly cheaper.
-- **Protobuf/gRPC-style length-delimited frames.** Adds a dependency and a
+- **Schema-based length-delimited frames.** Adds a dependency and a
   codegen step for what are opaque payloads; the envelope only needs routing.
 - **Put the envelope in a text frame.** Forces UTF-8 validation and prevents
   embedding arbitrary bytes; binary is the correct WebSocket type.

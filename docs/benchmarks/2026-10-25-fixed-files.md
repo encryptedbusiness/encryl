@@ -1,8 +1,8 @@
 # Fixed-file tables: 500k idle connections
 
 Date: 2026-10-25
-Commit: working tree (`5d22909` plus the fixed-file changes)
-Author: Sairash
+Commit: working tree (`963850b` plus the fixed-file changes)
+Author: sairash
 
 ## Environment
 

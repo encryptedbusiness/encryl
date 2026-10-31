@@ -2,9 +2,9 @@
 
 Status: Accepted
 Date: 2026-10-23
-Deciders: Sairash
+Deciders: sairash
 Related: ADR-0003 (wire format), ADR-0014 (vertical slices), ADR-0018
-(protobuf protocol)
+(Bebop protocol)
 
 ## Context
 
@@ -56,7 +56,7 @@ clarity.
 
 `On` receives `func(*Conn, []byte)`. The payload aliases the receive buffer and
 is valid only for the call. The application decodes JSON, MessagePack,
-protobuf, or a custom format. The library does not reflect, allocate, or copy.
+Bebop, or a custom format. The library does not reflect, allocate, or copy.
 
 `OnRequest` receives `([]byte) ([]byte, error)`; the response travels in the
 existing acknowledgement payload.
@@ -66,7 +66,7 @@ existing acknowledgement payload.
 The native envelope is unchanged: 16 bytes with a 32-bit event field. The event
 field is FNV-1a 32 of the name. `On` registers the name and handler under that
 ID; `Emit` hashes once per send, never per recipient. Clients compute the same
-hash. Protobuf clients may send `EventRef.Name`; the server resolves it through
+hash. Bebop clients may send `EventRef.Name`; the server resolves it through
 the same name table.
 
 This avoids a new wire version, a handshake name table, and per-message string

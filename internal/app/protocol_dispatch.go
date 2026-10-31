@@ -13,7 +13,7 @@ import (
 	"github.com/encryptedbusiness/encryl/reactor"
 )
 
-// handleProtocolMessage decodes one protobuf frame and handles each command in
+// handleProtocolMessage decodes one Bebop frame and handles each command in
 // order on the owning loop.
 func (s *Server) handleProtocolMessage(c *Conn, payload []byte) {
 	if c.session == nil {
@@ -28,7 +28,7 @@ func (s *Server) handleProtocolMessage(c *Conn, payload []byte) {
 	for i := range cmds {
 		cmd := &cmds[i]
 		if !c.session.Connected() && cmd.Kind != protocol.CommandConnect {
-			c.sendProtoReply(&protocol.Reply{
+			c.sendProtocolReply(&protocol.Reply{
 				ID:    cmd.ID,
 				Error: &protocol.Error{Code: protocol.CodeBadRequest, Message: []byte("connect required")},
 			})
@@ -51,7 +51,7 @@ func (s *Server) handleProtocolMessage(c *Conn, payload []byte) {
 		case protocol.CommandPong:
 			// Liveness is handled by the WebSocket ping/pong today.
 		default:
-			c.sendProtoReply(&protocol.Reply{
+			c.sendProtocolReply(&protocol.Reply{
 				ID:    cmd.ID,
 				Error: &protocol.Error{Code: protocol.CodeBadRequest, Message: []byte("unknown command")},
 			})
@@ -61,7 +61,7 @@ func (s *Server) handleProtocolMessage(c *Conn, payload []byte) {
 
 func (s *Server) handleProtoConnect(c *Conn, cmd *protocol.Command) {
 	if c.session.Connected() {
-		c.sendProtoReply(&protocol.Reply{
+		c.sendProtocolReply(&protocol.Reply{
 			ID:    cmd.ID,
 			Error: &protocol.Error{Code: protocol.CodeBadRequest, Message: []byte("already connected")},
 		})
@@ -69,7 +69,7 @@ func (s *Server) handleProtoConnect(c *Conn, cmd *protocol.Command) {
 	}
 	err := s.verifyToken(cmd.Connect.Token)
 	if err != nil {
-		c.sendProtoReply(&protocol.Reply{
+		c.sendProtocolReply(&protocol.Reply{
 			ID:    cmd.ID,
 			Error: &protocol.Error{Code: protocol.CodeUnauthorized, Message: []byte(err.Error())},
 		})
@@ -92,7 +92,7 @@ func (s *Server) handleProtoConnect(c *Conn, cmd *protocol.Command) {
 			EventID: s.roomEvent(room),
 		})
 	}
-	c.sendProtoReply(&protocol.Reply{
+	c.sendProtocolReply(&protocol.Reply{
 		ID:   cmd.ID,
 		Kind: protocol.ReplyConnect,
 		Connect: protocol.ConnectResult{
@@ -106,17 +106,17 @@ func (s *Server) handleProtoConnect(c *Conn, cmd *protocol.Command) {
 func (s *Server) handleProtoSubscribe(c *Conn, cmd *protocol.Command) {
 	room := string(cmd.Subscribe.Room)
 	if room == "" {
-		c.sendProtoReply(&protocol.Reply{
+		c.sendProtocolReply(&protocol.Reply{
 			ID:    cmd.ID,
 			Error: &protocol.Error{Code: protocol.CodeBadRequest, Message: []byte("room is required")},
 		})
 		return
 	}
 	if err := c.Join(room); err != nil {
-		c.sendProtoReply(&protocol.Reply{ID: cmd.ID, Error: protoError(err)})
+		c.sendProtocolReply(&protocol.Reply{ID: cmd.ID, Error: protoError(err)})
 		return
 	}
-	c.sendProtoReply(&protocol.Reply{
+	c.sendProtocolReply(&protocol.Reply{
 		ID:   cmd.ID,
 		Kind: protocol.ReplySubscribe,
 		Subscribe: protocol.SubscribeResult{
@@ -129,7 +129,7 @@ func (s *Server) handleProtoSubscribe(c *Conn, cmd *protocol.Command) {
 func (s *Server) handleProtoUnsubscribe(c *Conn, cmd *protocol.Command) {
 	room, ok := c.session.RoomName(cmd.Unsubscribe.RoomID)
 	if !ok {
-		c.sendProtoReply(&protocol.Reply{
+		c.sendProtocolReply(&protocol.Reply{
 			ID:    cmd.ID,
 			Error: &protocol.Error{Code: protocol.CodeNotSubscribed, Message: []byte("not subscribed")},
 		})
@@ -137,13 +137,13 @@ func (s *Server) handleProtoUnsubscribe(c *Conn, cmd *protocol.Command) {
 	}
 	_ = c.Leave(room)
 	c.session.RemoveRoom(cmd.Unsubscribe.RoomID)
-	c.sendProtoReply(&protocol.Reply{ID: cmd.ID})
+	c.sendProtocolReply(&protocol.Reply{ID: cmd.ID})
 }
 
 func (s *Server) handleProtoPublish(c *Conn, cmd *protocol.Command) {
 	if cmd.Publish.RoomID != 0 {
 		if _, ok := c.session.RoomName(cmd.Publish.RoomID); !ok {
-			c.sendProtoReply(&protocol.Reply{
+			c.sendProtocolReply(&protocol.Reply{
 				ID:    cmd.ID,
 				Error: &protocol.Error{Code: protocol.CodeNotSubscribed, Message: []byte("not subscribed")},
 			})
@@ -153,7 +153,7 @@ func (s *Server) handleProtoPublish(c *Conn, cmd *protocol.Command) {
 	room := c.protoRoom(cmd.Publish.RoomID, cmd.Publish.Room)
 	eventID, ok := s.protoEvent(cmd.Publish.Event, room)
 	if !ok {
-		c.sendProtoReply(&protocol.Reply{
+		c.sendProtocolReply(&protocol.Reply{
 			ID:    cmd.ID,
 			Error: &protocol.Error{Code: protocol.CodeUnknownEvent, Message: []byte("unknown event")},
 		})
@@ -165,29 +165,29 @@ func (s *Server) handleProtoPublish(c *Conn, cmd *protocol.Command) {
 	if h, found := s.events.Lookup(eventID); found {
 		if err := h(c, m); err != nil {
 			if !c.replied {
-				c.sendProtoError(cmd.ID, protoErrorCode(err), err.Error())
+				c.sendProtocolError(cmd.ID, protoErrorCode(err), err.Error())
 			}
 			return
 		}
 		if cmd.ID != 0 && !c.replied {
-			c.sendProtoReply(&protocol.Reply{ID: cmd.ID, Kind: protocol.ReplyPublish})
+			c.sendProtocolReply(&protocol.Reply{ID: cmd.ID, Kind: protocol.ReplyPublish})
 		}
 		return
 	}
 
 	if room == "" {
-		c.sendProtoReply(&protocol.Reply{
+		c.sendProtocolReply(&protocol.Reply{
 			ID:    cmd.ID,
 			Error: &protocol.Error{Code: protocol.CodeUnknownRoom, Message: []byte("room is required")},
 		})
 		return
 	}
 	if err := s.To(room).EmitID(eventID, cmd.Publish.Payload); err != nil {
-		c.sendProtoReply(&protocol.Reply{ID: cmd.ID, Error: protoError(err)})
+		c.sendProtocolReply(&protocol.Reply{ID: cmd.ID, Error: protoError(err)})
 		return
 	}
 	if cmd.ID != 0 {
-		c.sendProtoReply(&protocol.Reply{ID: cmd.ID, Kind: protocol.ReplyPublish})
+		c.sendProtocolReply(&protocol.Reply{ID: cmd.ID, Kind: protocol.ReplyPublish})
 	}
 }
 
@@ -305,61 +305,61 @@ func protoError(err error) *protocol.Error {
 	return &protocol.Error{Code: protoErrorCode(err), Message: []byte(err.Error())}
 }
 
-// sendProtoReply encodes and enqueues one reply.
-func (c *Conn) sendProtoReply(r *protocol.Reply) {
-	size := protocol.FramedReplySize(r)
+// sendProtocolReply encodes and enqueues one reply.
+func (c *Conn) sendProtocolReply(r *protocol.Reply) {
+	size := protocol.FramedReplySizeBebop(r)
 	f, h := connection.NewFrameWithHeader(size)
-	out := protocol.AppendFramedReply(f.Buf[h:h], r)
+	out := protocol.AppendFramedReplyBebop(f.Buf[h:h], r)
 	f.Buf = f.Buf[:h+len(out)]
 	f.Counted = true
 	_ = c.sendFrame(f, reactor.Command{Kind: reactor.CmdSend, Slot: c.slot, Gen: c.gen, Frame: f})
 }
 
-// buildProtoPush encodes one push into a frame. The caller owns the reference.
-func (c *Conn) buildProtoPush(p *protocol.Push) *connection.Frame {
-	size := protocol.FramedPushSize(p)
+// buildProtocolPush encodes one push into a frame. The caller owns the reference.
+func (c *Conn) buildProtocolPush(p *protocol.Push) *connection.Frame {
+	size := protocol.FramedPushSizeBebop(p)
 	f, h := connection.NewFrameWithHeader(size)
-	out := protocol.AppendFramedPush(f.Buf[h:h], p)
+	out := protocol.AppendFramedPushBebop(f.Buf[h:h], p)
 	f.Buf = f.Buf[:h+len(out)]
 	f.Counted = true
 	return f
 }
 
-// sendProtoPush encodes and enqueues one push.
-func (c *Conn) sendProtoPush(p *protocol.Push) {
-	f := c.buildProtoPush(p)
+// sendProtocolPush encodes and enqueues one push.
+func (c *Conn) sendProtocolPush(p *protocol.Push) {
+	f := c.buildProtocolPush(p)
 	_ = c.sendFrame(f, reactor.Command{Kind: reactor.CmdSend, Slot: c.slot, Gen: c.gen, Frame: f})
 }
 
-func (c *Conn) sendProtoError(id uint32, code uint32, text string) {
-	c.sendProtoReply(&protocol.Reply{
+func (c *Conn) sendProtocolError(id uint32, code uint32, text string) {
+	c.sendProtocolReply(&protocol.Reply{
 		ID:    id,
 		Error: &protocol.Error{Code: code, Message: []byte(text)},
 	})
 }
 
-// emitProto sends one Self-Room event to a protobuf connection.
-func (c *Conn) emitProto(eventID uint32, payload []byte) error {
+// emitProtocol sends one Self-Room event to a protocol connection.
+func (c *Conn) emitProtocol(eventID uint32, payload []byte) error {
 	if c == nil || c.srv == nil || c.closed.Load() || c.acct == nil {
 		return ErrClosed
 	}
 	if int64(len(payload)) > c.srv.cfg.MaxMessageSize-event.HeaderSize {
 		return ErrPayloadTooLarge
 	}
-	c.sendProtoPush(&protocol.Push{
+	c.sendProtocolPush(&protocol.Push{
 		Kind:    protocol.PushMessage,
 		Message: protocol.Message{EventID: eventID, Payload: payload},
 	})
 	return nil
 }
 
-// emitWithAckProto sends a server-initiated protobuf request and arms its timeout.
-func (c *Conn) emitWithAckProto(eventID uint32, payload []byte, timeout time.Duration, cb func(Ack)) error {
+// emitWithAckProtocol sends a server-initiated request and arms its timeout.
+func (c *Conn) emitWithAckProtocol(eventID uint32, payload []byte, timeout time.Duration, cb func(Ack)) error {
 	return c.armEmitWithAck(eventID, payload, timeout, cb, func(token uint64) *connection.Frame {
 		p := protocol.Push{
 			Kind:    protocol.PushRequest,
 			Request: protocol.Request{Token: token, EventID: eventID, Payload: payload},
 		}
-		return c.buildProtoPush(&p)
+		return c.buildProtocolPush(&p)
 	})
 }

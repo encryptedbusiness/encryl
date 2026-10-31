@@ -73,7 +73,7 @@ fuzz:
 	$(GO) test -run=NONE -fuzz=FuzzFrame -fuzztime=60s ./ws
 	$(GO) test -run=NONE -fuzz=FuzzUpgrade -fuzztime=60s ./httpx
 	$(GO) test -run=NONE -fuzz=FuzzEnvelope -fuzztime=60s ./event
-	$(GO) test -run=NONE -fuzz=FuzzDecodeCommands -fuzztime=60s ./protocol
+	$(GO) test -run=NONE -fuzz=FuzzDecodeBebopCommands -fuzztime=60s ./protocol
 
 # --- Linux-only targets -----------------------------------------------------
 # These require a Linux 6.6+ target. By default they run inside the Lima VM

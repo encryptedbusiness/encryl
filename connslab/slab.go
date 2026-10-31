@@ -109,7 +109,7 @@ type Slot struct {
 	Flags       uint8
 	CloseCode   uint16
 	CloseRemote bool
-	// Encoding is the negotiated wire encoding: 0 native, 1 protobuf.
+	// Encoding is the negotiated wire encoding: 0 native, 1 Bebop.
 	Encoding uint8
 	// Direct reports that FD is a direct descriptor in the loop file table.
 	Direct bool

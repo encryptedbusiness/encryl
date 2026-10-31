@@ -247,26 +247,26 @@ func FuzzUpgrade(f *testing.F) {
 	})
 }
 
-func TestProtobufSubprotocolNegotiation(t *testing.T) {
-	req := strings.Replace(validRequest, "foo, encryl.v2", "encryl.pb.v1", 1)
+func TestBebopSubprotocolNegotiation(t *testing.T) {
+	req := strings.Replace(validRequest, "foo, encryl.v2", "encryl.v2, encryl.bebop.v1", 1)
 	p := NewParser(DefaultLimits())
 	res, _, err := p.Feed([]byte(req))
 	if err != nil || res != Complete {
 		t.Fatalf("res=%v err=%v", res, err)
 	}
 	got := p.Request()
-	if got.Encoding != 1 || string(got.Subprotocol) != "encryl.pb.v1" {
+	if got.Encoding != 1 || string(got.Subprotocol) != "encryl.bebop.v1" {
 		t.Fatalf("request = encoding %d subprotocol %q", got.Encoding, got.Subprotocol)
 	}
 	buf := make([]byte, 256)
 	n := Response101(buf, got.Accept, got.Subprotocol)
-	if !strings.Contains(string(buf[:n]), "Sec-WebSocket-Protocol: encryl.pb.v1\r\n") {
+	if !strings.Contains(string(buf[:n]), "Sec-WebSocket-Protocol: encryl.bebop.v1\r\n") {
 		t.Fatalf("response = %q", string(buf[:n]))
 	}
 }
 
-func TestProtobufFormatQuery(t *testing.T) {
-	req := strings.Replace(validRequest, "GET /ws HTTP/1.1", "GET /ws?format=protobuf HTTP/1.1", 1)
+func TestBebopFormatQuery(t *testing.T) {
+	req := strings.Replace(validRequest, "GET /ws HTTP/1.1", "GET /ws?format=bebop HTTP/1.1", 1)
 	req = strings.Replace(req, "Sec-WebSocket-Protocol: foo, encryl.v2\r\n", "", 1)
 	p := NewParser(DefaultLimits())
 	res, _, err := p.Feed([]byte(req))
@@ -277,15 +277,30 @@ func TestProtobufFormatQuery(t *testing.T) {
 	if got.Encoding != 1 || len(got.Subprotocol) != 0 {
 		t.Fatalf("request = encoding %d subprotocol %q", got.Encoding, got.Subprotocol)
 	}
-	buf := make([]byte, 256)
-	n := Response101(buf, got.Accept, got.Subprotocol)
-	if strings.Contains(string(buf[:n]), "Sec-WebSocket-Protocol") {
-		t.Fatalf("unexpected protocol header: %q", string(buf[:n]))
+}
+
+func TestBebopFormatConflict(t *testing.T) {
+	req := strings.Replace(validRequest, "GET /ws HTTP/1.1", "GET /ws?format=bebop HTTP/1.1", 1)
+	p := NewParser(DefaultLimits())
+	res, _, err := p.Feed([]byte(req))
+	var rej *RejectError
+	if res != Rejected || !errors.As(err, &rej) || rej.Status != 400 {
+		t.Fatalf("res=%v err=%v", res, err)
 	}
 }
 
-func TestProtobufFormatConflict(t *testing.T) {
+func TestLegacyFormatRejected(t *testing.T) {
 	req := strings.Replace(validRequest, "GET /ws HTTP/1.1", "GET /ws?format=protobuf HTTP/1.1", 1)
+	p := NewParser(DefaultLimits())
+	res, _, err := p.Feed([]byte(req))
+	var rej *RejectError
+	if res != Rejected || !errors.As(err, &rej) || rej.Status != 400 {
+		t.Fatalf("res=%v err=%v", res, err)
+	}
+}
+
+func TestLegacySubprotocolRejected(t *testing.T) {
+	req := strings.Replace(validRequest, "foo, encryl.v2", "encryl.pb.v1", 1)
 	p := NewParser(DefaultLimits())
 	res, _, err := p.Feed([]byte(req))
 	var rej *RejectError
@@ -304,7 +319,7 @@ func TestJSONFormatRejected(t *testing.T) {
 	}
 }
 
-func TestNoProtocolDefaultsToProtobuf(t *testing.T) {
+func TestNoProtocolDefaultsToBebop(t *testing.T) {
 	req := strings.Replace(validRequest, "Sec-WebSocket-Protocol: foo, encryl.v2\r\n", "", 1)
 	p := NewParser(DefaultLimits())
 	res, _, err := p.Feed([]byte(req))

@@ -47,7 +47,7 @@ The library trusts it to have authenticated the client in M1.
 | T4 | WebSocket protocol abuse (unmasked frames, bad RSV, oversized control frames, fragmentation bombs) | Full RFC 6455 state machine; mask required from clients; control frames ≤125 bytes and never fragmented; `MaxFragments`, `MaxFrameSize`, `MaxMessageSize` | M1 |
 | T5 | Text-frame smuggling | Application data is binary-only; a text frame is rejected at the header with `1003`. No UTF-8 path exists in M1. | M1 |
 | T6 | Cross-site WebSocket hijacking (CSWSH) | Origin allowlist; empty list means same-origin only; no wildcard by default. With TLS upstream, this is the in-process browser defense. | M1 |
-| T7 | Credential theft via URL/logs | Tokens only in the first `AUTH` envelope (native) or the `Connect` command (protobuf); never in query strings; structured logs redact credentials. | M2 |
+| T7 | Credential theft via URL/logs | Tokens only in the first `AUTH` envelope (native) or the `Connect` command (Bebop); never in query strings; structured logs redact credentials. | M2 |
 | T8 | Brute force / credential stuffing | Constant-time comparison; auth deadline; per-IP connection cap; optional external rate limiter hook. | M2 |
 | T9 | Per-connection floods | Token buckets for messages and bytes; max frame/message size | M2 |
 | T10 | Slowloris at handshake | `HandshakeTimeout` enforced by the timer wheel, not by goroutines | M1 |
@@ -58,10 +58,10 @@ The library trusts it to have authenticated the client in M1.
 | T15 | Descriptor double-close / reuse | Close exactly once via `IORING_OP_CLOSE`; close completion tagged and generation-checked | M1 |
 | T16 | Handler blocks the reactor | Documented non-blocking contract; bounded worker pool; reactor-lag metric | M2 |
 | T17 | io_uring widens the kernel attack surface | io_uring is the only backend and is Linux-only. The process must be trusted; privileges are dropped after ring setup; `IORING_REGISTER_RESTRICTIONS` allowlists every opcode. | Accepted |
-| T18 | Proxy identity is mistaken for client identity | Native connections are pre-authenticated and carry no peer identity. A protobuf connection may call `Config.TokenVerifier`; a nil verifier accepts every token. There is no per-IP cap; the proxy must enforce one until PROXY protocol support lands. | Accepted, later milestone |
+| T18 | Proxy identity is mistaken for client identity | Native connections are pre-authenticated and carry no peer identity. A Bebop connection may call `Config.TokenVerifier`; a nil verifier accepts every token. There is no per-IP cap; the proxy must enforce one until PROXY protocol support lands. | Accepted, later milestone |
 | T19 | Supply-chain compromise of the io_uring binding | Vendored, pinned, with a NOTICE, LICENSE, and a documented patch; upstream is audited on upgrade | M0 |
 | T20 | Randomness / identifier predictability | Connection IDs are not secrets and are never used for authorization; auth tokens are compared constant-time; any generated token uses `crypto/rand` | M2 |
-| T21 | Malformed protobuf command or frame | Bounds-checked hand decoder; 4 MiB frame, 1 MiB message, 1024-message batch caps; unknown fields skipped; decoder fuzzed; malformed input closes with 1002 | M1 (protocol slice) |
+| T21 | Malformed Bebop command or frame | Bounds-checked hand decoders; 4 MiB frame, 1 MiB message, 1024-message batch caps; decoder fuzzed; malformed input closes with 1002 | M1 (protocol slice) |
 | T22 | Event name hash collision | FNV-1a 32; registration rejects a name mapped to a different ID; unknown events are dropped and unknown requests get an error ACK; raw bytes are borrowed, never decoded by the library; use `OnID` for collision-sensitive applications | M1 (named events) |
 
 ## io_uring: explicit trust statement

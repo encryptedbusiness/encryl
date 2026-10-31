@@ -134,6 +134,23 @@ The non-encryl servers ended during the 100k ingest run.
 - **Mixed WebSocket p99.99:** fasthttp leads at **16.482 ms**; encryl_httpuring
   is second at **21.245 ms**.
 
+## Protocol codec: Bebop
+
+Ubuntu 24.04 / kernel 6.8.0-147 / arm64 / Go 1.27.2, 8 vCPU Lima VM.
+
+| Path | Result |
+| ---- | ------ |
+| Decode publish, 64B | **10.6 ns** |
+| Decode 16-message batch | **162.6 ns** |
+| Encode event push, 64B | **17.9 ns** |
+| Encode Self-Room push, 64B | **15.8 ns** |
+| Fan-out to 1000 recipients | **1696 ns** |
+| Event-push wire size | **84 B** |
+
+Bebop is the only client event codec and uses 0 B/op and 0 allocs/op. Full
+method and raw data:
+[`docs/benchmarks/`](docs/benchmarks/) and ADR-0023.
+
 ## Limits
 
 - Single host, loopback network.

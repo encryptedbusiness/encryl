@@ -2,7 +2,7 @@
 
 Date: 2026-10-23
 Commit: working tree (named-event API added)
-Author: Sairash
+Author: sairash
 
 ## Environment
 

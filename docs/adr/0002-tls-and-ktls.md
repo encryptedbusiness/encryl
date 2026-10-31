@@ -2,7 +2,7 @@
 
 Status: Superseded by [0013](0013-tls-terminates-upstream.md)
 Date: 2026-10-22
-Deciders: Sairash
+Deciders: sairash
 
 > **Superseded.** TLS now terminates at a load balancer or reverse proxy; the
 > library speaks plaintext ws:// only. The kTLS findings remain as M0 evidence.

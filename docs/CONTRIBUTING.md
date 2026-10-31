@@ -25,7 +25,7 @@ room/        directory, Self-Room resolver, fan-out planner
 connslab/  slab, state machine, frames, bounded write queue
 ws/                  RFC 6455 parser
 httpx/               HTTP upgrade parser
-protocol/    protobuf codec, session, event names, transport seam
+protocol/    Bebop codec, session, event names, transport seam
 reactor/     io_uring loop, commands, send path
 uring / netio/    ring, tags, probe, listener, RX/TX arenas
 httpuring/   net.Listener/net.Conn stream adapter for net/http
@@ -35,7 +35,6 @@ bench/loadgen/        reproducible load generator
 bench/fanout/         room fan-out harness for Gate C
 bench/workload/       unicast, group, ACK, and churn harness
 bench/http/           TFB-shaped JSON/plaintext comparison harness
-proto/                protobuf schema for external clients
 examples/echo/        minimal echo server for soak/Autobahn
 examples/chat/        single-listener browser chat: rooms, Topic sends, ACKs
 examples/http/        attached net/http server: ServeHTTP and Start

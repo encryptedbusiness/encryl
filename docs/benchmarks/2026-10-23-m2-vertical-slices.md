@@ -6,7 +6,7 @@
 | Kernel | `6.8.0-147-generic` (Ubuntu 24.04, aarch64) |
 | Memory | `MemTotal: 15,957 MB` |
 | Go | `go1.27.2 linux/arm64` |
-| Commit | `917309e` + the vertical-slice working tree (not yet committed) |
+| Commit | `49f2a86` + the vertical-slice working tree (not yet committed) |
 | Date | 2026-10-23 |
 | TLS mode | plaintext `ws://` only; TLS terminates upstream (ADR-0013) |
 | Sysctls | `fs.file-max=4000000`, `fs.nr_open=4000000`, `somaxconn=65535`, `tcp_max_syn_backlog=65535`, `ip_local_port_range=1024 65535`, `tcp_tw_reuse=1`, `tcp_mem=1800000 2200000 2600000`, `tcp_rmem=tcp_wmem=1024 4096 16384`, `rmem_max=wmem_max=16384`, `tcp_moderate_rcvbuf=0`, `nf_conntrack_max=3000000`, `ulimit -n=1048576` |

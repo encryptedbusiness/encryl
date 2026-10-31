@@ -39,10 +39,12 @@ The preflight output from `make preflight` is pasted verbatim.
 Current v1 results use the `idle` workload only; see
 `2026-10-22-v1-scaling.md`. Message workloads need a v2 server and are M1+.
 
-The protobuf protocol report is `2026-10-23-protobuf-protocol.md`: codec
-microbenchmarks against `centrifugal/protocol` on the same VM, the allocation-
-free protobuf echo path, and the decoder fuzz run. The protocol is opt-in and
-not wire-compatible with Centrifuge.
+The Bebop codec report is `2026-10-31-bebop-codec.md`: the codec
+microbenchmarks, wire sizes, the 1000-recipient fan-out copy model, and the
+decision to make Bebop the only client codec. See ADR-0023.
+
+The historical `2026-10-23-protobuf-protocol.md` report is retained as evidence
+for the removed codec; it is not a supported protocol in 1.1.0.
 
 The named-event report is `2026-10-23-named-events.md`: event-name hash cost,
 the named-vs-numeric echo comparison, and the zero-allocation string path.

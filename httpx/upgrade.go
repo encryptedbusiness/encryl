@@ -49,9 +49,9 @@ type Request struct {
 	Host      []byte
 	Origin    []byte
 	HasOrigin bool
-	// Encoding is 1 for the protobuf protocol, 0 for the native envelope.
+	// Encoding is 1 for Bebop, 0 for the native envelope.
 	Encoding uint8
-	// Subprotocol is empty for a protobuf connection that negotiated with a
+	// Subprotocol is empty for a protocol connection that negotiated with a
 	// query parameter only.
 	Subprotocol []byte
 }
@@ -72,8 +72,8 @@ type Parser struct {
 	hasVer      bool
 	hasKey      bool
 	hasProto    bool
-	subEncoding uint8
-	formatPB    bool
+	subEncoding int
+	formatBebop bool
 	badFormat   bool
 
 	host   []byte
@@ -121,8 +121,8 @@ func (p *Parser) Reset() {
 	p.hasVer = false
 	p.hasKey = false
 	p.hasProto = false
-	p.subEncoding = 0
-	p.formatPB = false
+	p.subEncoding = -1
+	p.formatBebop = false
 	p.badFormat = false
 	p.sub = p.sub[:0]
 	p.accept = [28]byte{}
@@ -142,7 +142,13 @@ func (p *Parser) Done() bool { return p.done }
 // Reset.
 func (p *Parser) Request() Request {
 	enc := p.subEncoding
-	if p.formatPB || !p.hasProto {
+	switch {
+	case p.formatBebop:
+		enc = 1
+	case !p.hasProto:
+		enc = 1
+	}
+	if enc < 0 {
 		enc = 1
 	}
 	return Request{
@@ -150,7 +156,7 @@ func (p *Parser) Request() Request {
 		Host:        p.host,
 		Origin:      p.origin,
 		HasOrigin:   len(p.origin) > 0,
-		Encoding:    enc,
+		Encoding:    uint8(enc),
 		Subprotocol: p.sub,
 	}
 }
@@ -239,8 +245,8 @@ func (p *Parser) parseRequestLine() error {
 	return nil
 }
 
-// parseQuery reads the protocol hints from the request query. The protobuf
-// protocol uses ?format=protobuf or ?protocol=protobuf. JSON is not supported.
+// parseQuery reads the protocol hints from the request query. The only
+// accepted format is ?format=bebop or ?protocol=bebop.
 func (p *Parser) parseQuery(q []byte) {
 	for len(q) > 0 {
 		var part []byte
@@ -258,10 +264,8 @@ func (p *Parser) parseQuery(q []byte) {
 		switch {
 		case bytes.EqualFold(key, []byte("format")), bytes.EqualFold(key, []byte("protocol")):
 			switch {
-			case bytes.EqualFold(val, []byte("protobuf")), bytes.EqualFold(val, []byte("pb")):
-				p.formatPB = true
-			case bytes.EqualFold(val, []byte("json")):
-				p.badFormat = true
+			case bytes.EqualFold(val, []byte("bebop")), bytes.EqualFold(val, []byte("bb")):
+				p.formatBebop = true
 			default:
 				p.badFormat = true
 			}
@@ -328,19 +332,18 @@ func (p *Parser) parseHeader() error {
 		}
 		p.hasProto = true
 		p.sub = p.sub[:0]
-		p.subEncoding = 0
+		p.subEncoding = -1
 		for _, token := range splitTokens(value) {
+			enc := -1
 			switch {
-			case bytes.EqualFold(token, []byte("encryl.pb.v1")):
-				if len(p.sub) == 0 {
-					p.subEncoding = 1
-					p.sub = append(p.sub, token...)
-				}
+			case bytes.EqualFold(token, []byte("encryl.bebop.v1")):
+				enc = 1
 			case bytes.EqualFold(token, []byte("encryl.v2")):
-				if len(p.sub) == 0 {
-					p.subEncoding = 0
-					p.sub = append(p.sub, token...)
-				}
+				enc = 0
+			}
+			if enc > p.subEncoding {
+				p.subEncoding = enc
+				p.sub = append(p.sub[:0], token...)
 			}
 		}
 	case bytes.EqualFold(name, []byte("origin")):
@@ -365,11 +368,14 @@ func (p *Parser) finish() error {
 	if p.badFormat {
 		return &RejectError{Status: 400, Reason: "unsupported protocol format"}
 	}
-	if p.hasProto && len(p.sub) == 0 {
-		return &RejectError{Status: 400, Reason: "Sec-WebSocket-Protocol must include encryl.v2 or encryl.pb.v1"}
+	if p.hasProto && p.subEncoding < 0 {
+		return &RejectError{Status: 400, Reason: "Sec-WebSocket-Protocol must include encryl.v2 or encryl.bebop.v1"}
 	}
-	if p.formatPB && p.hasProto && p.subEncoding == 0 {
-		return &RejectError{Status: 400, Reason: "protobuf format conflicts with encryl.v2 subprotocol"}
+	if p.formatBebop && p.hasProto && p.subEncoding == 0 {
+		return &RejectError{Status: 400, Reason: "protocol format conflicts with encryl.v2 subprotocol"}
+	}
+	if p.formatBebop && p.hasProto && p.subEncoding != 1 {
+		return &RejectError{Status: 400, Reason: "protocol format conflicts with the selected subprotocol"}
 	}
 	p.done = true
 	return nil
@@ -396,7 +402,7 @@ const webSocketGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 // Response101 writes the upgrade response into dst and returns its length. dst
 // must have room for at least 256 bytes. subprotocol is echoed when it is not
-// empty; a protobuf connection may negotiate with a query parameter only.
+// empty; a Bebop connection may negotiate with a query parameter only.
 func Response101(dst []byte, accept [28]byte, subprotocol []byte) int {
 	const prefix = "HTTP/1.1 101 Switching Protocols\r\n" +
 		"Upgrade: websocket\r\n" +

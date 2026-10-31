@@ -52,9 +52,9 @@ func TestPrepareUpgradeParity(t *testing.T) {
 		raw  string
 	}{
 		{"native", rawUpgrade("Sec-WebSocket-Protocol: encryl.v2\r\n")},
-		{"protobuf", rawUpgrade("Sec-WebSocket-Protocol: encryl.pb.v1\r\n")},
-		{"default-protobuf", rawUpgrade("")},
-		{"query-protobuf", "GET /ws?format=protobuf HTTP/1.1\r\nHost: example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + testWSKey + "\r\nSec-WebSocket-Version: 13\r\n\r\n"},
+		{"bebop", rawUpgrade("Sec-WebSocket-Protocol: encryl.bebop.v1\r\n")},
+		{"default-bebop", rawUpgrade("")},
+		{"query-bebop", "GET /ws?format=bebop HTTP/1.1\r\nHost: example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + testWSKey + "\r\nSec-WebSocket-Version: 13\r\n\r\n"},
 		{"query-json", "GET /ws?format=json HTTP/1.1\r\nHost: example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + testWSKey + "\r\nSec-WebSocket-Version: 13\r\n\r\n"},
 		{"unknown-protocol", rawUpgrade("Sec-WebSocket-Protocol: other\r\n")},
 		{"bad-version", "GET /ws HTTP/1.1\r\nHost: example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + testWSKey + "\r\nSec-WebSocket-Version: 12\r\n\r\n"},

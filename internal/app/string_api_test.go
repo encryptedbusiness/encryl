@@ -158,47 +158,47 @@ func TestStringUnknownEventDropped(t *testing.T) {
 	}
 }
 
-func TestStringProtobufPublishByName(t *testing.T) {
-	srv, err := New(testProtoConfig())
+func TestStringBebopPublishByName(t *testing.T) {
+	srv, err := New(testBebopConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := srv.On("chat.pb", func(c *Conn, data []byte) {
-		_ = c.ToRoom("room").Emit("chat.pb", data)
+	if err := srv.On("chat.bebop", func(c *Conn, data []byte) {
+		_ = c.ToRoom("room").Emit("chat.bebop", data)
 	}); err != nil {
 		t.Fatal(err)
 	}
 	url := startTestServer(t, srv)
-	a := dialProto(t, url)
+	a := dialBebop(t, url)
 	defer a.Close()
-	b := dialProto(t, url)
+	b := dialBebop(t, url)
 	defer b.Close()
-	connectProto(t, a)
-	connectProto(t, b)
-	sub := subscribeProto(t, a, 2, "room")
-	subscribeProto(t, b, 2, "room")
+	connectBebop(t, a)
+	connectBebop(t, b)
+	sub := subscribeBebop(t, a, 2, "room")
+	subscribeBebop(t, b, 2, "room")
 
-	writeProto(t, a, protocol.Command{
+	writeBebop(t, a, protocol.Command{
 		ID:   3,
 		Kind: protocol.CommandPublish,
 		Publish: protocol.Publish{
 			RoomID:  sub.RoomID,
-			Event:   protocol.EventRef{Name: []byte("chat.pb")},
+			Event:   protocol.EventRef{Name: []byte("chat.bebop")},
 			Payload: []byte("hello"),
 		},
 	})
 
-	for _, r := range readProto(t, b) {
+	for _, r := range readBebop(t, b) {
 		if r.Push.Kind != protocol.PushEvent {
 			continue
 		}
 		push := r.Push.Event
-		if push.EventID != EventIDForName("chat.pb") || string(push.Room) != "room" || string(push.Payload) != "hello" {
+		if push.EventID != EventIDForName("chat.bebop") || string(push.Room) != "room" || string(push.Payload) != "hello" {
 			t.Fatalf("push = %+v", push)
 		}
 		return
 	}
-	t.Fatal("protobuf client did not receive the named event")
+	t.Fatal("bebop client did not receive the named event")
 }
 
 func TestStringDisconnect(t *testing.T) {

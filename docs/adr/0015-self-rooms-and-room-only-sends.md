@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-23
-Deciders: Sairash
+Deciders: sairash
 Amends: ADR-0007 (rooms sharded by loop with encode-once fan-out)
 
 ## Context

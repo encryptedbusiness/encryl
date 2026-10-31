@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
+
+	"github.com/encryptedbusiness/encryl/protocol"
 )
 
 // UpgradeError reports a rejected WebSocket upgrade with the HTTP status the
@@ -91,49 +93,52 @@ func (s *Server) PrepareUpgrade(h UpgradeHeaders) (UpgradeSpec, error) {
 	}
 
 	var (
-		formatPB  bool
+		format    int // 0 none, 1 Bebop
 		badFormat bool
-		subEnc    uint8
+		subEnc    = -1
 		subLen    int
 	)
-	parseProtocolQuery(h.Target, &formatPB, &badFormat)
+	parseProtocolQuery(h.Target, &format, &badFormat)
 	if h.ProtocolCount > 0 {
-		selected := false
 		forEachToken(h.Protocol, func(token []byte) {
-			if selected {
-				return
-			}
+			enc := -1
 			switch {
-			case bytes.EqualFold(token, []byte("encryl.pb.v1")):
-				subEnc, selected = 1, true
+			case bytes.EqualFold(token, []byte(protocol.SubprotocolBebopV1)):
+				enc = int(protocol.EncodingBebopV1)
 			case bytes.EqualFold(token, []byte("encryl.v2")):
-				subEnc, selected = 0, true
+				enc = int(protocol.EncodingNative)
 			}
-			if selected && len(token) <= len(out.Subprotocol) {
-				copy(out.Subprotocol[:], token)
+			if enc > subEnc {
+				subEnc = enc
 				subLen = len(token)
+				if subLen <= len(out.Subprotocol) {
+					copy(out.Subprotocol[:], token)
+				}
 			}
 		})
-		if !selected {
-			return out, &UpgradeError{Status: 400, Reason: "Sec-WebSocket-Protocol must include encryl.v2 or encryl.pb.v1"}
+		if subEnc < 0 {
+			return out, &UpgradeError{Status: 400, Reason: "Sec-WebSocket-Protocol must include encryl.v2 or encryl.bebop.v1"}
+		}
+		if subLen > len(out.Subprotocol) {
+			return out, &UpgradeError{Status: 400, Reason: "Sec-WebSocket-Protocol is too long"}
 		}
 	}
 	out.SubprotocolLen = uint8(subLen)
 	if badFormat {
 		return out, &UpgradeError{Status: 400, Reason: "unsupported protocol format"}
 	}
-	if h.ProtocolCount > 0 && !formatPB && subEnc == 1 {
-		out.Encoding = 1
-	} else if h.ProtocolCount > 0 && subEnc == 0 {
-		out.Encoding = 0
+	if format != 0 {
+		if h.ProtocolCount > 0 && subEnc == int(protocol.EncodingNative) {
+			return out, &UpgradeError{Status: 400, Reason: "protocol format conflicts with encryl.v2 subprotocol"}
+		}
+		if h.ProtocolCount > 0 && subEnc != format {
+			return out, &UpgradeError{Status: 400, Reason: "protocol format conflicts with the selected subprotocol"}
+		}
+		out.Encoding = uint8(format)
+	} else if h.ProtocolCount > 0 {
+		out.Encoding = uint8(subEnc)
 	} else {
-		out.Encoding = 1
-	}
-	if formatPB && h.ProtocolCount > 0 && subEnc == 0 {
-		return out, &UpgradeError{Status: 400, Reason: "protobuf format conflicts with encryl.v2 subprotocol"}
-	}
-	if formatPB {
-		out.Encoding = 1
+		out.Encoding = uint8(protocol.EncodingBebopV1)
 	}
 
 	if h.OriginCount == 1 && len(h.Origin) > 0 && !s.originAllowedBytes(h.Origin, h.Host) {
@@ -197,7 +202,7 @@ func lowerASCII(b byte) byte {
 	return b
 }
 
-func parseProtocolQuery(target []byte, formatPB, badFormat *bool) {
+func parseProtocolQuery(target []byte, format *int, badFormat *bool) {
 	i := bytes.IndexByte(target, '?')
 	if i < 0 {
 		return
@@ -219,10 +224,8 @@ func parseProtocolQuery(target []byte, formatPB, badFormat *bool) {
 		switch {
 		case bytes.EqualFold(key, []byte("format")), bytes.EqualFold(key, []byte("protocol")):
 			switch {
-			case bytes.EqualFold(val, []byte("protobuf")), bytes.EqualFold(val, []byte("pb")):
-				*formatPB = true
-			case bytes.EqualFold(val, []byte("json")):
-				*badFormat = true
+			case bytes.EqualFold(val, []byte("bebop")), bytes.EqualFold(val, []byte("bb")):
+				*format = int(protocol.EncodingBebopV1)
 			default:
 				*badFormat = true
 			}

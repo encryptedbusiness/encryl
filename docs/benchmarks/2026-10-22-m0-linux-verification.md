@@ -11,7 +11,7 @@ need the epoll baseline that M1 provides.
 | CPU | ARMv8 virtual CPU, 4 vCPU |
 | Memory | 7.7 GiB |
 | Go | go1.27.2 linux/arm64 |
-| Commit | `e62f4b8` |
+| Commit | `fd9ef4e` |
 | Date | 2026-10-22 |
 | Command | `make spike-uring`, `make spike-ktls`, `make preflight` |
 | Raw | outputs reproduced inline; no CSV for functional runs |

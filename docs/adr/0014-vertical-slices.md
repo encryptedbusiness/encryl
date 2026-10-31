@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-23
-Deciders: Sairash
+Deciders: sairash
 Supersedes: the horizontal layout described in `docs/architecture.md` before
 this date
 

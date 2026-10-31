@@ -2,7 +2,7 @@
 
 Status: Accepted; module split updated by ADR-0014
 Date: 2026-10-22
-Deciders: Sairash
+Deciders: sairash
 
 Supersedes [0001](0001-io-backend.md).
 

@@ -2,7 +2,7 @@
 
 Status: Accepted; amended by ADR-0015
 Date: 2026-10-22
-Deciders: Sairash
+Deciders: sairash
 
 > NOTE: ADR-0015 amends this decision. Membership stays in the global sharded
 > directory rather than a per-loop index, and the reference-counted fan-out,

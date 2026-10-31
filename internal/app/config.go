@@ -122,15 +122,15 @@ type Config struct {
 	// returns ErrBackpressure. Default 65536.
 	MaxPendingAcks int
 
-	// EventNames maps event names to numeric IDs for the protobuf protocol.
+	// EventNames maps event names to numeric IDs for the Bebop protocol.
 	// Names are resolved before traffic; the wire uses the numeric ID.
 	EventNames map[string]uint32
 
-	// ChannelEvents maps a room name to its default event ID. A protobuf
+	// ChannelEvents maps a room name to its default event ID. A Bebop
 	// publish or subscribe that does not name an event uses this mapping.
 	ChannelEvents map[string]uint32
 
-	// TokenVerifier authenticates a protobuf Connect token. A nil verifier
+	// TokenVerifier authenticates a Bebop Connect token. A nil verifier
 	// accepts every connection, matching the trusted-proxy model.
 	TokenVerifier func(token []byte) error
 
@@ -385,7 +385,7 @@ func (c *Config) validate() (problems, warnings []ConfigProblem) {
 		}
 	}
 	if c.TokenVerifier == nil {
-		warn("TokenVerifier", nil, "accept_all", "TokenVerifier is nil; every protobuf token is accepted")
+		warn("TokenVerifier", nil, "accept_all", "TokenVerifier is nil; every Bebop token is accepted")
 	}
 	if c.MaxMessageSize > c.WriteQueueBytes {
 		warn("MaxMessageSize", c.MaxMessageSize, "slow_path", "MaxMessageSize exceeds WriteQueueBytes; a full-size emit takes the slow path")

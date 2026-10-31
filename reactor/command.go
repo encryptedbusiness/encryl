@@ -30,7 +30,7 @@ type Command struct {
 	SelfExcept    connection.Ref
 	HasSelfExcept bool
 	// Encoding filters a broadcast: only connections with this encoding
-	// receive the frame. 0 is native, 1 is protobuf.
+	// receive the frame. 0 is native, 1 is Bebop.
 	Encoding uint8
 }
 

@@ -1,10 +1,9 @@
-# Wire protocols: `encryl.v2` and protobuf v1
+# Wire protocols: `encryl.v2` and Bebop
 
 The transport is RFC 6455 over plaintext `ws://`. The server supports two
-encodings. The native 16-byte v2 envelope is selected by
-`encryl.v2`. The protobuf protocol is selected by
-`encryl.pb.v1`, `?format=protobuf`, or no protocol hint at all; a
-connection that offers neither negotiates protobuf v1 by default.
+encodings. The native 16-byte v2 envelope is selected by `encryl.v2`. Bebop is
+selected by `encryl.bebop.v1`, `?format=bebop`, or no protocol hint at all; a
+connection that offers neither negotiates Bebop v1 by default.
 
 The envelope adds framing, correlation, and versioning. It does **not** provide
 confidentiality. TLS terminates at a load balancer or reverse proxy in front of
@@ -152,7 +151,7 @@ Requirements beyond RFC 6455:
 | Header | Rule |
 | ------ | ---- |
 | `Sec-WebSocket-Version` | `13` |
-| `Sec-WebSocket-Protocol` | `encryl.v2` for the native envelope, `encryl.pb.v1` for protobuf, or absent for the protobuf default |
+| `Sec-WebSocket-Protocol` | `encryl.v2` for the native envelope, `encryl.bebop.v1` for Bebop, or absent for the Bebop default |
 | `Sec-WebSocket-Extensions` | Ignored; `permessage-deflate` is not negotiated |
 | `Origin` | Must match `Config.AllowedOrigins`, or be absent for non-browser clients |
 | Request headers | Bounded by `MaxHeaderBytes` (default 8 KiB) |
@@ -202,37 +201,95 @@ Anything that changes the 16-byte header is version 3.
 
 ---
 
-## Protobuf protocol v1
+## Bebop protocol v1 (default)
 
-This encoding is an alternative to the 16-byte envelope. It is inspired by
-Centrifuge, but it is **not** wire-compatible with Centrifuge, Centrifugo, or
-Grafana Live. See ADR-0018.
+Bebop is the only client event codec. It shares the event core with the native
+envelope. Values follow the Bebop wire format; the record layout adds a one-byte
+presence bitmap and a one-byte frame type so the small encryl messages stay
+compact. See ADR-0023.
 
 ### Negotiation
 
 | Client offer | Encoding |
 | ------------ | -------- |
-| `Sec-WebSocket-Protocol: encryl.pb.v1` | Protobuf v1; the 101 response echoes the subprotocol. |
-| `GET /ws?format=protobuf` | Protobuf v1; no subprotocol is echoed. |
-| No subprotocol and no `format` | Protobuf v1 default; no subprotocol is echoed. |
+| `Sec-WebSocket-Protocol: encryl.bebop.v1` | Bebop v1; the 101 response echoes the subprotocol. |
+| `GET /ws?format=bebop` | Bebop v1; no subprotocol is echoed. |
+| No subprotocol and no `format` | Bebop v1 default; no subprotocol is echoed. |
 | `Sec-WebSocket-Protocol: encryl.v2` | The native 16-byte envelope. |
-| `encryl.v2` plus `?format=protobuf` | Rejected with 400. |
-| `?format=json` | Rejected with 400. JSON is not supported. |
+| A protocol format plus `encryl.v2` | Rejected with 400. |
+| Any other subprotocol or format | Rejected with 400. |
+
+When a client offers both Bebop and native, the server prefers Bebop and echoes
+that token.
+
+### Values
+
+- Integers are little-endian and fixed-width: `uint32` is four bytes, `uint64`
+  eight.
+- `bool` is one byte. Enums are one byte in this schema.
+- `string` and `bytes` are a `uint32` length followed by the bytes.
+- Arrays are a `uint32` count followed by the elements.
+- Fields carry no tags; the record layout defines their order.
 
 ### Framing
 
-One WebSocket binary message contains one or more length-delimited protobuf
-messages:
+One WebSocket binary message contains one or more varint-length-delimited
+messages. A client `Command` body starts with:
 
 ```text
-varint length | message | varint length | message | ...
+uint32 id | uint8 kind | uint8 presence | fields in bit order
 ```
 
-- Client to server: `Command` messages.
-- Server to client: `Reply` messages. A `Reply` with `id = 0` carries a `Push`.
-- One frame may mix replies and pushes.
-- A truncated length, an oversized message, or an unknown field closes the
-  connection with a protocol error.
+A server message starts with a frame type:
+
+```text
+uint8 frameType | body
+frameType = 0 reply, 2 push
+```
+
+A push skips the reply ID, reply kind, and error byte, which keeps a 64-byte
+event push at 84 bytes.
+
+### Presence bits
+
+Each record's presence byte selects which fields follow. An absent field costs
+no bytes.
+
+| Record | Bits |
+| ------ | ---- |
+| `Command.Connect` | 0 token, 1 client, 2 version, 3 subscriptions |
+| `Command.Publish` | 0 roomID, 1 room, 2 eventID, 3 event name, 4 payload, 5 requestID |
+| `Command.Send` | 0 eventID, 1 event name, 2 payload, 3 requestID |
+| `Command.Ack` | 0 payload (token is always present) |
+| `Reply.Connect` | 0 clientID, 1 pong, 2 subscriptions |
+| `Reply.Ack` | 0 payload |
+| `Push.Event` | 0 roomID, 1 room, 2 eventID, 3 payload, 4 requestID, 5 offset |
+| `Push.Message` | 0 eventID, 1 payload, 2 requestID |
+
+The reply error bitmap uses bit 0 for present and bit 1 for temporary. The full
+schema is in `protocol/bebop.bop`; the hand-written codec is
+`protocol/bebop.go`.
+
+### Golden example
+
+A `Command` with `id = 1`, a `send` body, event ID 1024, and payload `"hi"`:
+
+```text
+frame = varint(16) | 01 00 00 00 05 05 00 04 00 00 02 00 00 00 68 69
+```
+
+The first `05` after the ID is `CommandSend`; the next `05` selects the event ID
+and payload fields.
+
+### Limits and errors
+
+The same limits apply: 1 MiB message, 4 MiB frame, 1024 messages per frame. A
+malformed length or presence bit closes with `1002`. The decoder is fuzzed by
+`FuzzDecodeBebopCommands`.
+
+---
+
+## Command and reply semantics
 
 ### Messages
 
@@ -245,10 +302,6 @@ varint length | message | varint length | message | ...
 | `Push.join` / `Push.leave` | Room membership change. |
 | `Push.disconnect` | The server is closing the connection. |
 | `Push.request` | A server-initiated request; answer with `Command.ack`. |
-
-The schema is in `proto/encryl/protocol/v1/protocol.proto`. The server
-implements a hand-written codec for the hot path; generated code is for
-external clients and as the test oracle.
 
 ### Event identity
 
@@ -293,16 +346,6 @@ closes the connection with 1002. A failed connect closes with 1008.
 - One frame is at most 4 MiB and 1024 messages.
 - A payload is borrowed for the handler call. Do not retain it.
 
-### Golden example
-
-A `Command` with `id = 1`, a `send` body, event ID 1024, and payload `"hi"`:
-
-```text
-frame = varint(13) | 08 01 32 09 0a 03 08 80 08 12 02 68 69
-```
-
-The exact bytes are covered by the protocol tests in `internal/protocol`.
-
 ### Event IDs and names
 
 The native envelope carries a 32-bit event ID. The public Go API uses a string
@@ -316,8 +359,8 @@ id = FNV-1a-32(name)
 - `Server.On`/`OnRequest` register the name and handler by that ID.
 - `Conn.Emit`/`To`/`ToRoom`/`Broadcast` hash the name once per send.
 - The wire does not carry the event name; a client must use the same hash.
-- The protobuf protocol can carry `EventRef.Name`; the server resolves it to the
-  same ID through its registry. Pushes carry the numeric ID.
+- Bebop can carry `EventRef.Name`; the server resolves it to the same ID
+  through its registry. Pushes carry the numeric ID.
 - No per-message string allocation or name lookup is required on the native
   fast path.
 

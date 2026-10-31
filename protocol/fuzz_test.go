@@ -2,14 +2,15 @@ package protocol
 
 import "testing"
 
-// FuzzDecodeCommands checks that a hostile frame cannot panic the decoder.
-func FuzzDecodeCommands(f *testing.F) {
+// FuzzDecodeBebopCommands checks that a hostile frame cannot panic the Bebop
+// decoder.
+func FuzzDecodeBebopCommands(f *testing.F) {
 	seeds := [][]byte{
 		{},
 		{0x00},
 		{0x01, 0x00},
-		{0x02, 0x08, 0x01},
-		{0x05, 0x28, 0x02, 0x12, 0x00},
+		{0x05, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00},
+		{0x05, 0x01, 0x00, 0x00, 0x00, 0x04, 0x10, 0x04, 0x00, 0x00, 0x00, 0x00},
 		{0xff, 0xff, 0xff, 0xff, 0x0f},
 	}
 	for _, s := range seeds {
@@ -17,8 +18,8 @@ func FuzzDecodeCommands(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var cmds []Command
-		_, _ = DecodeCommands(data, cmds)
+		_, _ = DecodeBebopCommands(data, cmds)
 		var replies []Reply
-		_, _ = DecodeReplies(data, replies)
+		_, _ = DecodeBebopReplies(data, replies)
 	})
 }

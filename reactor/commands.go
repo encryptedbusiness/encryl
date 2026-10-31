@@ -50,6 +50,9 @@ func (l *loop) drainCommands() {
 				if !ok || sl.State != connection.StateOpen {
 					continue
 				}
+				if sl.Encoding != c.Encoding {
+					continue
+				}
 				if c.HasSelfExcept {
 					self := connection.Ref{Loop: uint16(l.cfg.Index), Slot: slot, Gen: sl.Gen}
 					if self == c.SelfExcept {

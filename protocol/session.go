@@ -48,7 +48,7 @@ func (s *Session) Reset() {
 
 // Decode splits one frame into commands. The returned payloads alias frame.
 func (s *Session) Decode(frame []byte) ([]Command, error) {
-	cmds, err := DecodeCommands(frame, s.cmds)
+	cmds, err := DecodeBebopCommands(frame, s.cmds)
 	s.cmds = cmds
 	return cmds, err
 }

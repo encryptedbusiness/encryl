@@ -9,7 +9,7 @@
 | Guest | Ubuntu 24.04 LTS, kernel 6.8.0-147-generic |
 | Guest resources | 8 vCPU, 15.6 GiB usable, 40 GiB disk |
 | Go | go1.27.2 linux/arm64 |
-| Verified commits | `0e723ab..bdfbdfe` on `v2` |
+| Verified commits | `752e3ac..07f2ebe` on `v2` |
 | Log | [`docs/m0-execution-log.md`](m0-execution-log.md) |
 
 NOTE: The M0 log was recorded on a 4 vCPU / 7.7 GiB guest. The current

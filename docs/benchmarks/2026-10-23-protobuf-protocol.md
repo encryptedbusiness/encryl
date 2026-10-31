@@ -1,8 +1,11 @@
-# Protobuf protocol v1: codec and end-to-end
+# Historical protobuf protocol v1: codec and end-to-end
+
+> Historical. The protobuf codec was removed in 1.1.0. This report documents the
+> removed codec and is not a supported protocol.
 
 Date: 2026-10-23
 Commit: working tree (protocol slice added)
-Author: Sairash
+Author: sairash
 
 ## Environment
 

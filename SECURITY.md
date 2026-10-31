@@ -4,12 +4,13 @@
 
 | Version | Status | Notes |
 | ------- | ------ | ----- |
-| 1.0.x | Supported | Current release. |
+| 1.1.x | Supported | Current release. Bebop is the only client codec. |
+| 1.0.x | Supported | Pre-Bebop release; upgrade to 1.1 for the client codec. |
 | 0.x | Unsupported | Pre-release hardening line. Superseded by 1.0.0. |
 
-Version 0 was the pre-release line. Version 1.0.0 is the first supported
-release; the module path did not change. If you are running a version 0 build,
-see `docs/migration-v0-v1.md`.
+Version 0 was the pre-release line. Version 1.1.0 is the current release;
+version 1.0.0 remains supported. The module path did not change. If you are
+running a version 0 build, see `docs/migration-v0-v1.md`.
 
 ## Reporting a vulnerability
 

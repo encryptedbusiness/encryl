@@ -100,7 +100,7 @@ EventIDForName("rpc.echo")            = 0x34830b6f
 - The wire does not carry the event name.
 - Clients compute the same hash. `encryl.EventIDForName` is exported for
   Go clients; the algorithm is ten lines in any language.
-- A protobuf client can send `EventRef.Name`; the server resolves it through
+- A Bebop client can send `EventRef.Name`; the server resolves it through
   the name table. Pushes carry the numeric ID.
 
 The hash is tested against fixed vectors. A collision is detected at

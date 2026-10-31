@@ -1,10 +1,3 @@
-// Package protocol implements the encryl protobuf event protocol.
-//
-// The protocol is a small, protobuf-only subset inspired by Centrifuge. It is
-// not wire-compatible with Centrifuge or Centrifugo. Messages are framed as
-// varint-length-prefixed protobuf messages concatenated in one WebSocket
-// binary message. The event core (registry, rooms, Self-Rooms, fan-out) stays
-// behind this package.
 package protocol
 
 import "errors"
@@ -13,23 +6,21 @@ import "errors"
 type Encoding uint8
 
 const (
-	// EncodingNative is the encryl.v2 16-byte envelope. It is kept as a
-	// compatibility codec behind the same seam.
+	// EncodingNative is the encryl.v2 16-byte envelope.
 	EncodingNative Encoding = iota
-	// EncodingProtobufV1 is this package.
-	EncodingProtobufV1
+	// EncodingBebopV1 is the only client event codec. It uses fixed-width
+	// Bebop values with a presence bitmap.
+	EncodingBebopV1
 )
 
-// Subprotocol names used during the WebSocket upgrade.
-const (
-	SubprotocolProtobufV1 = "encryl.pb.v1"
-)
+// SubprotocolBebopV1 is the WebSocket subprotocol for the event codec.
+const SubprotocolBebopV1 = "encryl.bebop.v1"
 
 // Wire limits. The server applies its own Config limits as well.
 const (
 	// MaxFrameBytes bounds one WebSocket binary message.
 	MaxFrameBytes = 4 << 20
-	// MaxMessageBytes bounds one protobuf message inside a frame.
+	// MaxMessageBytes bounds one protocol message inside a frame.
 	MaxMessageBytes = 1 << 20
 	// MaxBatchMessages bounds the number of messages in one frame.
 	MaxBatchMessages = 1024
@@ -56,6 +47,6 @@ var (
 	ErrMessageTooLarge = errors.New("protocol: message too large")
 	// ErrTooManyMessages reports a batch above MaxBatchMessages.
 	ErrTooManyMessages = errors.New("protocol: too many messages")
-	// ErrWire reports a malformed protobuf field.
+	// ErrWire reports a malformed field.
 	ErrWire = errors.New("protocol: malformed message")
 )

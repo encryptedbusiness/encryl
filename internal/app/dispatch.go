@@ -68,7 +68,7 @@ func (s *Server) newConn(loop int, slot, gen uint32, acct *connection.Accounting
 		peerSet:    family != 0,
 		encoding:   protocol.Encoding(encoding),
 	}
-	if c.encoding == protocol.EncodingProtobufV1 {
+	if c.encoding == protocol.EncodingBebopV1 {
 		c.session = protocol.AcquireSession()
 	}
 	return c
@@ -130,7 +130,7 @@ func (s *Server) handleMessage(loop int, slot, gen uint32, payload []byte) {
 		return
 	}
 
-	if c.encoding == protocol.EncodingProtobufV1 {
+	if c.encoding != protocol.EncodingNative {
 		s.handleProtocolMessage(c, payload)
 		return
 	}

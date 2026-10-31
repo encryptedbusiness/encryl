@@ -60,9 +60,9 @@ runs: the full Autobahn suite (`scripts/autobahn.sh`, needs an amd64 host) and
 the 60-minute idle soak (`make soak`). A 60-minute 1M hold with traffic already
 ran; see the M3 report.
 
-A protobuf protocol is also implemented (ADR-0018). It shares the event
-core and is not an M1 exit requirement. Its codec and end-to-end measurements
-are in [`benchmarks/2026-10-23-protobuf-protocol.md`](benchmarks/2026-10-23-protobuf-protocol.md).
+Bebop is the only client event codec (ADR-0023). It shares the event core and is
+not an M1 exit requirement. Codec and end-to-end measurements are in
+[`benchmarks/2026-10-31-bebop-codec.md`](benchmarks/2026-10-31-bebop-codec.md).
 
 Baseline reports:
 [`docs/benchmarks/2026-10-23-m1-reactor.md`](benchmarks/2026-10-23-m1-reactor.md)
@@ -166,8 +166,8 @@ milestone is otherwise not started.
 
 Status (2026-10-23): **not started** for this milestone's scope. The native
 `AUTH` envelope is a no-op and the server treats the peer as pre-authenticated for
-native connections. The protobuf protocol added a `Config.TokenVerifier`
-hook and an identity on protobuf connections. The named-event API
+native connections. The Bebop codec added a `Config.TokenVerifier` hook and an
+identity on Bebop connections. The named-event API
 (`On`/`OnRequest`/`OnConnect`, raw borrowed payloads) landed ahead of this
 milestone; see `docs/events.md`. Per-IP limits, native AUTH, and generated
 clients remain absent.
@@ -187,9 +187,8 @@ clients remain absent.
   non-blocking contract.
 - Structured, redacted logs; constant-time credential comparison.
 - Go and TypeScript clients; the in-tree `examples/chat` named-event/room
-  example and the protobuf schema
-  (`proto/encryl/protocol/v1/protocol.proto`) exist. The generated client
-  and TypeScript codegen remain.
+  example and the Bebop schema (`protocol/bebop.bop`) exist. The generated
+  client and TypeScript codegen remain.
 - Full test matrix: unit, race, fuzz, interoperability, fault injection,
   security, benchmark.
 

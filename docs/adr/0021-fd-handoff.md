@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-24
-Deciders: Sairash
+Deciders: sairash
 
 ## Context
 

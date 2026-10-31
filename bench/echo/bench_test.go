@@ -294,8 +294,8 @@ func BenchmarkTopicEcho100k(b *testing.B) {
 	}
 }
 
-// BenchmarkProtoSendEcho100k measures the protobuf send path.
-func BenchmarkProtoSendEcho100k(b *testing.B) {
+// BenchmarkBebopSendEcho100k measures the Bebop send path.
+func BenchmarkBebopSendEcho100k(b *testing.B) {
 	cfg := testServerConfig()
 	cfg.EventNames = map[string]uint32{"echo": 2048}
 	srv, err := encryl.New(cfg)
@@ -308,11 +308,11 @@ func BenchmarkProtoSendEcho100k(b *testing.B) {
 		b.Fatal(err)
 	}
 	rawURL := startServer(b, srv)
-	c := rawWSDialProtocol(b, rawURL, protocol.SubprotocolProtobufV1)
+	c := rawWSDialProtocol(b, rawURL, protocol.SubprotocolBebopV1)
 	defer c.Close()
 
 	connect := protocol.Command{ID: 1, Kind: protocol.CommandConnect, Connect: protocol.Connect{}}
-	if _, err := c.Write(maskedBinaryFrame(protocol.AppendFramedCommand(nil, &connect), [4]byte{1, 2, 3, 4})); err != nil {
+	if _, err := c.Write(maskedBinaryFrame(protocol.AppendFramedCommandBebop(nil, &connect), [4]byte{1, 2, 3, 4})); err != nil {
 		b.Fatal(err)
 	}
 	buf := make([]byte, 2048)
@@ -322,7 +322,7 @@ func BenchmarkProtoSendEcho100k(b *testing.B) {
 		Kind: protocol.CommandSend,
 		Send: protocol.Send{Event: protocol.EventRef{ID: 2048}, Payload: []byte("0123456789abcdef")},
 	}
-	frame := maskedBinaryFrame(protocol.AppendFramedCommand(nil, &send), [4]byte{0x37, 0xfa, 0x21, 0x3d})
+	frame := maskedBinaryFrame(protocol.AppendFramedCommandBebop(nil, &send), [4]byte{0x37, 0xfa, 0x21, 0x3d})
 	var replies []protocol.Reply
 	b.ReportAllocs()
 	b.SetBytes(int64(len(frame) * 2))
@@ -333,7 +333,7 @@ func BenchmarkProtoSendEcho100k(b *testing.B) {
 		}
 		data := readWSMessage(b, c, buf)
 		var derr error
-		replies, derr = protocol.DecodeReplies(data, replies[:0])
+		replies, derr = protocol.DecodeBebopReplies(data, replies[:0])
 		if derr != nil {
 			b.Fatal(derr)
 		}

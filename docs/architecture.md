@@ -20,7 +20,7 @@ touches one slice. See `docs/adr/0014-vertical-slices.md`.
 | room | `room` | sharded directory, Self-Room resolver, fan-out planner |
 | connection | `connslab` | slab, state machine, frames, write queue |
 | transport | `ws / httpx` | upgrade and RFC 6455 parsers |
-| protocol | `protocol` | protobuf codec, framing, session, event names, transport seam |
+| protocol | `protocol` | Bebop codec, framing, session, event names, transport seam |
 
 | Engine | Package | Owns |
 | ------ | ------- | ---- |
@@ -34,8 +34,8 @@ The module root contains only `encryl.go` (package documentation) and
 `conn.go`, `events.go`, `topic.go`, `emitter.go`, `config.go`, and `errors.go`.
 `dispatch.go` composes the native event-slice registry lookup with the
 lifecycle fallback, the error envelope, and the automatic ACK;
-`protocol_dispatch.go` translates protobuf commands into the same registry,
-room, and emitter calls. The event slice does not dispatch on its own.
+`protocol_dispatch.go` translates Bebop commands into the same registry, room,
+and emitter calls. The event slice does not dispatch on its own.
 
 The dependency graph is acyclic: `facade → slices → engine`, except that
 `reactor` drives the `connslab`, `ws`, and `httpx` contracts directly on the
@@ -53,9 +53,9 @@ flowchart LR
     upgrade --> ws[RFC 6455 parser]
     ws --> codec{negotiated encoding}
     codec -->|native| env[v2 envelope decoder]
-    codec -->|protobuf| pbc[protobuf command decoder]
+    codec -->|bebop| bbc[Bebop command decoder]
     env --> dispatch[Inline dispatch]
-    pbc --> dispatch
+    bbc --> dispatch
     dispatch --> handler[Handler]
     handler --> commands[Per-loop command queue]
     commands --> queue[Bounded per-conn write queue]
@@ -88,20 +88,20 @@ A connection negotiates one encoding during the upgrade:
 
 - `encryl.v2` selects the native 16-byte envelope. It remains the encoding
   for clients that offer that subprotocol.
-- `encryl.pb.v1`, `?format=protobuf`, or no protocol hint at all selects
-  the protobuf command protocol. See
-  `docs/adr/0018-protobuf-event-protocol.md`.
+- `encryl.bebop.v1`, `?format=bebop`, or no protocol hint at all selects
+  Bebop. Bebop is the only client codec. See
+  `docs/adr/0023-bebop-default.md`.
 
 The slot stores one encoding byte. The reactor passes it to `OnOpen`; the facade
-creates a pooled `protocol.Session` only for protobuf connections, and the
+creates a pooled `protocol.Session` for every non-native connection, and the
 emitter selects a frame per encoding. The event core does not know which codec
-is in use: both paths resolve the same numeric Event IDs, join the same rooms,
+is in use: all paths resolve the same numeric Event IDs, join the same rooms,
 and enqueue into the same bounded write queue.
 
 The emitter encodes once per encoding, never once per recipient. A room with
-native and protobuf members gets one native frame and one protobuf frame; the
-per-loop fan-out command carries a homogeneous batch. A broadcast carries one
-command per encoding and the loop filters by the slot's encoding.
+native and Bebop members gets one frame for each encoding; the per-loop fan-out
+command carries a homogeneous batch. A broadcast carries one command per
+encoding and the loop filters by the slot's encoding.
 
 `protocol.Transport` is the seam for additional adapters (SSE and HTTP-stream).
 WebSocket is the first adapter. A fallback transport reuses the same `Session`

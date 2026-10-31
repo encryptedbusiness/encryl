@@ -1,8 +1,8 @@
 # FD handoff: attached net/http, fasthttp, and Fiber
 
 Date: 2026-10-24
-Commit: working tree (`5d22909` plus the fd-handoff changes)
-Author: Sairash
+Commit: working tree (`963850b` plus the fd-handoff changes)
+Author: sairash
 
 ## Environment
 
@@ -103,7 +103,7 @@ Single sweep on the same VM, after the hold completed:
 | Server echo | 26,916 | 27,731 | +3.0% |
 | String echo | 26,807 | 27,619 | +3.0% |
 | Topic echo | 26,804 | 27,377 | +2.1% |
-| Protobuf echo | 27,116 | 28,027 | +3.4% |
+| Legacy protocol echo | 27,116 | 28,027 | +3.4% |
 | Raw echo | 25,946 | 26,524 | +2.2% |
 | Hash `chat` | 1.13 | 1.342 | +18.8% (0.21 ns absolute) |
 | Hash `chat.message` | 3.44 | 3.556 | +3.4% |
@@ -155,7 +155,7 @@ make gate-a CONNS=1000000 SHARDS=2 SRC_IPS=40 RATE=10000 \
 
 The recorded report values are 0.392 KiB/conn steady and 0.444 KiB/conn
 post-ramp. This run is 5.1% higher steady and 16.7% higher at ramp end. That is
-expected: the recorded numbers predate the named-event and protobuf user-data
+expected: the recorded numbers predate the named-event and protocol user-data
 fields; the README already marks a fresh 1M run as pending. The hold itself is
 flat (444,704 → 444,880 → 444,872 KiB), with zero closed connections and zero
 per-connection descriptors added during the hold. The +2 FD delta is a fixed

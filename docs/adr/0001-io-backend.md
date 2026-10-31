@@ -2,7 +2,7 @@
 
 Status: Superseded by [0012](0012-io-uring-only.md)
 Date: 2026-10-22
-Deciders: Sairash
+Deciders: sairash
 
 > **Superseded.** The project moved to an io_uring-only architecture. epoll was
 > never implemented. Keep this ADR for the M0 evidence and the reasoning that

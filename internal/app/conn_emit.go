@@ -25,8 +25,8 @@ func (c *Conn) Emit(event string, payload []byte) error {
 
 // EmitID is the numeric low-level form of Emit.
 func (c *Conn) EmitID(eventID uint32, payload []byte) error {
-	if c != nil && c.encoding == protocol.EncodingProtobufV1 {
-		return c.emitProto(eventID, payload)
+	if c != nil && c.encoding != protocol.EncodingNative {
+		return c.emitProtocol(eventID, payload)
 	}
 	return c.emit(eventID, payload, 0)
 }
@@ -39,8 +39,8 @@ func (c *Conn) EmitIDLocal(eventID uint32, payload []byte) error {
 	if c == nil || c.srv == nil || c.closed.Load() || c.acct == nil {
 		return ErrClosed
 	}
-	if c.encoding == protocol.EncodingProtobufV1 {
-		return c.emitProto(eventID, payload)
+	if c.encoding != protocol.EncodingNative {
+		return c.emitProtocol(eventID, payload)
 	}
 	if int64(len(payload)) > c.srv.cfg.MaxMessageSize-event.HeaderSize {
 		return ErrPayloadTooLarge
@@ -152,8 +152,8 @@ func (c *Conn) EmitWithAckID(eventID uint32, payload []byte, timeout time.Durati
 	if c == nil || c.srv == nil || c.closed.Load() || c.acct == nil {
 		return ErrClosed
 	}
-	if c.encoding == protocol.EncodingProtobufV1 {
-		return c.emitWithAckProto(eventID, payload, timeout, cb)
+	if c.encoding != protocol.EncodingNative {
+		return c.emitWithAckProtocol(eventID, payload, timeout, cb)
 	}
 	return c.armEmitWithAck(eventID, payload, timeout, cb, func(token uint64) *connection.Frame {
 		return connection.BuildFrame(event.KindEvent, eventID, token, 0, payload)
@@ -229,8 +229,8 @@ func (c *Conn) Reply(m Message, payload []byte) error {
 		return ErrPayloadTooLarge
 	}
 	c.replied = true
-	if c.encoding == protocol.EncodingProtobufV1 {
-		c.sendProtoReply(&protocol.Reply{
+	if c.encoding != protocol.EncodingNative {
+		c.sendProtocolReply(&protocol.Reply{
 			ID:   uint32(m.RequestID),
 			Kind: protocol.ReplyAck,
 			Ack:  protocol.AckResult{Payload: payload},
@@ -248,8 +248,8 @@ func (c *Conn) Reply(m Message, payload []byte) error {
 
 // sendACK sends an empty acknowledgement event.
 func (c *Conn) sendACK(m Message) {
-	if c.encoding == protocol.EncodingProtobufV1 {
-		c.sendProtoReply(&protocol.Reply{ID: uint32(m.RequestID), Kind: protocol.ReplyAck})
+	if c.encoding != protocol.EncodingNative {
+		c.sendProtocolReply(&protocol.Reply{ID: uint32(m.RequestID), Kind: protocol.ReplyAck})
 		return
 	}
 	f := connection.BuildFrame(event.KindAck, m.Event, m.RequestID, 0, nil)
@@ -263,8 +263,8 @@ func (c *Conn) sendACK(m Message) {
 
 // sendError sends an ERROR envelope with the same RequestID.
 func (c *Conn) sendError(m Message, code uint16, text string) {
-	if c.encoding == protocol.EncodingProtobufV1 {
-		c.sendProtoError(uint32(m.RequestID), protoCodeFromNative(code), text)
+	if c.encoding != protocol.EncodingNative {
+		c.sendProtocolError(uint32(m.RequestID), protoCodeFromNative(code), text)
 		return
 	}
 	body := make([]byte, 2+len(text))
