@@ -290,17 +290,27 @@ func TestBebopBroadcastIsEncodingFiltered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// ConnectionsOpen counts accepted sockets, which can race ahead of the
+	// upgrade and the OnOpen callback that records each connection's encoding.
+	// Wait for both connections to finish opening before broadcasting.
+	opened := make(chan struct{}, 2)
+	if err := srv.UseConnect(func(*Conn) error {
+		opened <- struct{}{}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	url := startTestServer(t, srv)
 
 	native := dialWS(t, url)
 	bb := dialBebop(t, url)
 
-	deadline := time.Now().Add(2 * time.Second)
-	for srv.Stats().ConnectionsOpen < 2 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if got := srv.Stats().ConnectionsOpen; got < 2 {
-		t.Fatalf("connections open = %d", got)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-opened:
+		case <-time.After(2 * time.Second):
+			t.Fatal("connections did not open")
+		}
 	}
 
 	if err := srv.EmitID(1024, []byte("all")); err != nil {
