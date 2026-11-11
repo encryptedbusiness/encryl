@@ -33,9 +33,9 @@ linters:
     # project's Go style rules.
     paths:
       - uring/giouring
-      - third_party$
-      - builtin$
-      - examples$
+      - third_party/
+      - builtin/
+      - examples/
 
 issues:
   max-issues-per-linter: 0
@@ -45,9 +45,9 @@ formatters:
   exclusions:
     generated: lax
     paths:
-      - third_party$
-      - builtin$
-      - examples$
+      - third_party/
+      - builtin/
+      - examples/
 
 # Note: gosec is deliberately not enabled yet. It flags the intentional
 # unsafe.Pointer use in internal/ktls (the kernel crypto_info struct) and needs

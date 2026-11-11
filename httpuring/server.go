@@ -29,6 +29,7 @@ const (
 	rawOpRecv
 	rawOpSend
 	rawOpWake
+	rawOpCancel
 )
 
 const (
@@ -166,6 +167,7 @@ type Server struct {
 	OnRequest func(time.Duration)
 
 	defaultsOnce sync.Once
+	serveWG      sync.WaitGroup
 	mu           sync.Mutex
 	closed       bool
 	loops        []*fastLoop
@@ -202,6 +204,7 @@ func (s *Server) ListenAndServe() error {
 		if err != nil {
 			return err
 		}
+		defer func() { _ = ln.Close() }()
 		return s.Serve(ln)
 	}
 	lns := make([]netio.Listener, 0, loops)
@@ -215,11 +218,22 @@ func (s *Server) ListenAndServe() error {
 		}
 		lns = append(lns, ln)
 	}
+	// Listeners created here are owned by this call. Close them when it
+	// returns so a failed loop also stops its siblings and no descriptor leaks.
+	defer func() {
+		for _, ln := range lns {
+			_ = ln.Close()
+		}
+	}()
 	errCh := make(chan error, loops)
 	for _, ln := range lns {
 		go func(ln netio.Listener) { errCh <- s.Serve(ln) }(ln)
 	}
-	return <-errCh
+	serveErr := <-errCh
+	// Stop the sibling loops through Close so they flush prepared SQEs and
+	// cancel accepts before the deferred listener close.
+	_ = s.Close()
+	return serveErr
 }
 
 // Serve runs the loop on an existing listener. It blocks until the listener
@@ -228,6 +242,16 @@ func (s *Server) Serve(ln netio.Listener) error {
 	if s.Handler == nil && s.HTTPHandler == nil {
 		return fmt.Errorf("httpuring: nil handler")
 	}
+	// Register before any setup so Close waits for the ring teardown that
+	// flushes prepared SQEs and cancels accepts while the listener is open.
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return net.ErrClosed
+	}
+	s.serveWG.Add(1)
+	s.mu.Unlock()
+	defer s.serveWG.Done()
 	s.applyDefaults()
 	buffers := s.Buffers
 	if buffers <= 0 {
@@ -522,11 +546,23 @@ func (s *Server) Close() error {
 	loops := append([]*fastLoop(nil), s.loops...)
 	listens := append([]netio.Listener(nil), s.listens...)
 	s.mu.Unlock()
-	var first error
 	for _, f := range loops {
 		f.stop.Store(true)
 		f.wake()
 	}
+	// Wait for the loops to flush prepared SQEs and cancel outstanding accepts
+	// while the listener descriptors are still open. Bounded so a Close from a
+	// serving goroutine cannot deadlock shutdown.
+	done := make(chan struct{})
+	go func() {
+		s.serveWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+	}
+	var first error
 	for _, ln := range listens {
 		if err := ln.Close(); err != nil && first == nil {
 			first = err
@@ -1318,7 +1354,9 @@ func (f *fastLoop) closeConn(c *fastConn) {
 func (f *fastLoop) closeAll() {
 	f.stop.Store(true)
 	if f.ring != nil && !f.ringBroken {
-		// Submit prepared operations while every descriptor is still open.
+		// Cancel pending accepts and flush prepared operations while every
+		// descriptor, including the listener, is still open.
+		f.queueAcceptCancels()
 		if _, err := f.ring.Submit(); err != nil {
 			f.ringBroken = true
 		}
@@ -1364,6 +1402,25 @@ func (f *fastLoop) closeAll() {
 	}
 }
 
+// queueAcceptCancels prepares a cancel for every in-flight accept. It runs on
+// the loop thread during shutdown, before the final submit and while the
+// listener is still open, so drainInflight cannot wait forever on a quiet
+// listener. The cancel completions are ignored by handle; each cancelled
+// accept still posts its own completion, which decrements acceptPending.
+func (f *fastLoop) queueAcceptCancels() {
+	if f.ring == nil || f.lnFD < 0 {
+		return
+	}
+	for i := 0; i < f.acceptPending; i++ {
+		sqe := f.getSQE()
+		if sqe == nil {
+			return
+		}
+		sqe.PrepareCancelFd(f.lnFD, giouring.AsyncCancelAll)
+		sqe.UserData = packUser(rawOpCancel, 0, 0)
+	}
+}
+
 func (f *fastLoop) drainInflight() bool {
 	if f.ring == nil {
 		return true
@@ -1371,20 +1428,35 @@ func (f *fastLoop) drainInflight() bool {
 	deadline := time.Now().Add(250 * time.Millisecond)
 	ts := syscall.NsecToTimespec(int64(time.Millisecond))
 	for time.Now().Before(deadline) {
-		pending := false
-		for _, ch := range f.slots.chunks {
-			for i := range ch {
-				if ch[i].has(flagRecv | flagSend | flagPoll) {
-					pending = true
+		pending := f.acceptPending > 0
+		if !pending {
+			for _, ch := range f.slots.chunks {
+				for i := range ch {
+					if ch[i].has(flagRecv | flagSend | flagPoll) {
+						pending = true
+						break
+					}
+				}
+				if pending {
 					break
 				}
-			}
-			if pending {
-				break
 			}
 		}
 		if !pending {
 			return true
+		}
+		// Overflowed completions are not visible through CQReady; ask the
+		// kernel to flush them so accepts and I/O released during shutdown are
+		// reaped instead of dropped with the ring.
+		if f.ring.CQHasOverflow() {
+			if _, err := f.ring.SubmitAndGetEvents(); err != nil &&
+				!errors.Is(err, unix.EINTR) {
+				return false
+			}
+		}
+		if f.ring.CQReady() > 0 {
+			f.processCQEs()
+			continue
 		}
 		if _, err := f.ring.SubmitAndWaitTimeout(1, &ts, nil); err != nil {
 			if errors.Is(err, unix.ETIME) || errors.Is(err, unix.EINTR) {
