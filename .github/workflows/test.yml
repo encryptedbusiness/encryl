@@ -29,10 +29,14 @@ jobs:
           GOOS=linux GOARCH=arm64 go build ./...
 
       - name: test
-        run: go test ./...
+        run: |
+          ulimit -l unlimited 2>/dev/null || sudo -n prlimit --pid $$ --memlock=unlimited:unlimited || echo "warning: could not raise RLIMIT_MEMLOCK"
+          go test ./...
 
       - name: test adapters
-        run: cd adapters && go test ./...
+        run: |
+          ulimit -l unlimited 2>/dev/null || sudo -n prlimit --pid $$ --memlock=unlimited:unlimited || echo "warning: could not raise RLIMIT_MEMLOCK"
+          cd adapters && go test ./...
 
       - name: build examples
         run: |
@@ -42,10 +46,14 @@ jobs:
           cd ../uringhttp_websocket && go build -o /dev/null .
 
       - name: race
-        run: go test -race $(go list ./... | grep -v uring/giouring)
+        run: |
+          ulimit -l unlimited 2>/dev/null || sudo -n prlimit --pid $$ --memlock=unlimited:unlimited || echo "warning: could not raise RLIMIT_MEMLOCK"
+          go test -race $(go list ./... | grep -v uring/giouring)
 
       - name: race adapters
-        run: cd adapters && go test -race ./...
+        run: |
+          ulimit -l unlimited 2>/dev/null || sudo -n prlimit --pid $$ --memlock=unlimited:unlimited || echo "warning: could not raise RLIMIT_MEMLOCK"
+          cd adapters && go test -race ./...
 
       - name: fuzz smoke
         run: go test -run=NONE -fuzz=FuzzDecodeCommands -fuzztime=45s ./protocol

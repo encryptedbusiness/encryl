@@ -3,9 +3,11 @@
 package uring
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/encryptedbusiness/encryl/uring/giouring"
+	"golang.org/x/sys/unix"
 )
 
 // NewRing creates, restricts, and enables a single-issuer ring. It must run on
@@ -16,17 +18,20 @@ func NewRing(entries uint32) (*giouring.Ring, error) {
 		entries = 64
 	}
 	ring := giouring.NewRing()
-	// A larger CQ avoids overflow at high completion rates. Keep the CQ at
-	// least twice the SQ size; the caller still owns the timer tick.
+	// Keep the CQ at twice the SQ size: each in-flight SQE can complete at
+	// most once, so this preserves headroom without inflating small fallback
+	// rings. The caller still owns the timer tick.
 	cqEntries := entries * 2
-	if cqEntries < 16384 {
-		cqEntries = 16384
-	}
 	flags := uint32(giouring.SetupSingleIssuer | giouring.SetupRDisabled |
 		giouring.SetupCoopTaskrun | giouring.SetupDeferTaskrun | giouring.SetupClamp)
 	// R_DISABLED is mandatory for restrictions: an enabled ring rejects
 	// IORING_REGISTER_RESTRICTIONS with EBADFD.
 	if err := ring.QueueInitCQ(entries, cqEntries, flags); err != nil {
+		if errors.Is(err, unix.ENOMEM) {
+			// Newer kernels charge ring pages to the per-user RLIMIT_MEMLOCK
+			// quota, shared by every process of that user.
+			return nil, fmt.Errorf("platform: ring setup: %w (raise RLIMIT_MEMLOCK: io_uring ring memory is charged per user)", err)
+		}
 		return nil, fmt.Errorf("platform: ring setup: %w", err)
 	}
 	if _, err := ring.RegisterRestrictions(Restrictions()); err != nil {

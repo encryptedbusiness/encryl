@@ -64,4 +64,6 @@ jobs:
           cache: true
 
       - name: reactor tests
-        run: go test -count=3 -timeout=5m ./uring ./uring/giouring ./reactor
+        run: |
+          ulimit -l unlimited 2>/dev/null || sudo -n prlimit --pid $$ --memlock=unlimited:unlimited || echo "warning: could not raise RLIMIT_MEMLOCK"
+          go test -count=3 -timeout=5m ./uring ./uring/giouring ./reactor

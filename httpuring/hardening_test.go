@@ -5,6 +5,7 @@ package httpuring
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -627,14 +628,17 @@ func TestHTTP10DefaultClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatalf("default: read body: %v", err)
+	}
 	if resp.StatusCode != 200 || string(body) != "ok" || !resp.Close {
 		t.Fatalf("default: status=%d body=%q close=%v", resp.StatusCode, body, resp.Close)
 	}
 	var one [1]byte
-	if _, err := br.Read(one[:]); err == nil {
-		t.Fatal("HTTP/1.0 connection stayed open without keep-alive")
+	if _, err := br.Read(one[:]); !errors.Is(err, io.EOF) {
+		t.Fatalf("HTTP/1.0 connection stayed open without keep-alive: err=%v", err)
 	}
 	_ = conn.Close()
 

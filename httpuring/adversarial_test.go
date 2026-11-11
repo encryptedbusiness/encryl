@@ -156,15 +156,33 @@ func startTestServer(t *testing.T, srv *Server) (netio.Listener, func()) {
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
+	ready := false
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
+		select {
+		case err := <-errCh:
+			_ = srv.Close()
+			_ = ln.Close()
+			t.Fatalf("server did not start: %v", err)
+		default:
+		}
 		srv.mu.Lock()
-		ready := len(srv.loops) > 0
+		ready = len(srv.loops) > 0
 		srv.mu.Unlock()
 		if ready {
 			break
 		}
 		time.Sleep(time.Millisecond)
+	}
+	if !ready {
+		_ = srv.Close()
+		_ = ln.Close()
+		select {
+		case err := <-errCh:
+			t.Fatalf("server did not start: %v", err)
+		default:
+		}
+		t.Fatal("server did not start")
 	}
 	cleanup := func() {
 		_ = srv.Close()

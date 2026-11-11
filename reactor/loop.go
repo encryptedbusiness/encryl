@@ -322,7 +322,7 @@ func (l *loop) QueueLen() int { return l.cmd.Len() + l.attachRing.Len() }
 // ringFallbackSizes are tried, in order, when the requested ring cannot be
 // created. Ring size is a throughput tuning knob; a smaller ring still serves
 // correctly on kernels or sandboxes that reject large queues.
-var ringFallbackSizes = []uint32{8192, 4096, 1024, 256}
+var ringFallbackSizes = []uint32{8192, 4096, 1024, 256, 64}
 
 // ringSizes returns the requested entries followed by strictly smaller
 // fallbacks. The list is deterministic and used by openRing.
@@ -359,6 +359,16 @@ func openRing(entries uint32, logf func(string, ...any)) (*giouring.Ring, error)
 func (l *loop) Run(ctx context.Context) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	// NewLoop allocated the arenas. Release them even when ring setup fails
+	// before the ring-owned cleanup below is registered.
+	defer func() {
+		if l.rx != nil {
+			_ = l.rx.Close()
+		}
+		if l.tx != nil {
+			_ = l.tx.Close()
+		}
+	}()
 
 	l.lnFD = -1
 	if l.ln != nil {
@@ -394,8 +404,6 @@ func (l *loop) Run(ctx context.Context) error {
 		l.ring = nil
 		unix.Close(efd)
 		l.wakeW.Store(-1)
-		l.rx.Close()
-		l.tx.Close()
 	}()
 
 	l.cmd.SetWake(l.wake)
