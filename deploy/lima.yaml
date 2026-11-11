@@ -37,7 +37,7 @@ provision:
 
       # Ubuntu 24.04 packages Go 1.22, which is older than go.mod's language
       # version. Install the toolchain the repository pins.
-      GO_VERSION="${GO_VERSION:-1.27.2}"
+      GO_VERSION="${GO_VERSION:-1.27.4}"
       if ! /usr/local/go/bin/go version 2>/dev/null | grep -q "go${GO_VERSION}"; then
         curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-arm64.tar.gz" -o /tmp/go.tgz
         rm -rf /usr/local/go

@@ -88,9 +88,9 @@ func (w *httpResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if f.reqCh != nil {
 		return nil, nil, errors.New("httpuring: hijack requires Workers=0")
 	}
-	if c.has(flagRecv | flagSend) {
-		// The ring still references a buffer for this connection; detaching
-		// it now would let the buffer be reused while the kernel owns it.
+	if c.has(flagRecv | flagSend | flagPoll) {
+		// The ring still references this connection; detaching it now would
+		// let a descriptor or buffer be reused while the kernel owns it.
 		return nil, nil, errors.New("httpuring: hijack with I/O in flight")
 	}
 	var extra []byte
@@ -364,6 +364,7 @@ func (f *fastLoop) dispatchHTTP(c *fastConn, method, target, path, query, proto,
 				if recover() != nil {
 					job.status = http.StatusInternalServerError
 					job.body = job.body[:0]
+					clear(job.respHeader)
 				}
 			}()
 			f.server.HTTPHandler.ServeHTTP(&job.rw, &job.req)
@@ -395,6 +396,7 @@ func (f *fastLoop) worker() {
 					if recover() != nil {
 						job.status = http.StatusInternalServerError
 						job.body = job.body[:0]
+						clear(job.respHeader)
 					}
 				}()
 				f.server.HTTPHandler.ServeHTTP(&job.rw, &job.req)
@@ -467,12 +469,40 @@ func headerClose(h http.Header) bool {
 	return false
 }
 
+// handlerContentLength returns the handler-provided Content-Length when it is
+// unambiguous and valid. Duplicate or malformed values are ignored.
+func handlerContentLength(h http.Header) (int64, bool) {
+	var value string
+	found := false
+	for key, values := range h {
+		if !strings.EqualFold(key, "Content-Length") {
+			continue
+		}
+		for _, v := range values {
+			if found {
+				return 0, false
+			}
+			found = true
+			value = v
+		}
+	}
+	if !found {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(strings.TrimSpace(value), 10, 63)
+	if err != nil {
+		return 0, false
+	}
+	return int64(n), true
+}
+
 func appendHTTPResponse(dst []byte, job *httpJob, status int, closeConn bool, serverHeader string, date []byte) []byte {
 	if status < 100 || status > 999 {
 		status = http.StatusInternalServerError
 	}
 	head := job.req.Method == http.MethodHead
 	noBody := head || status < 200 || status == http.StatusNoContent || status == http.StatusNotModified
+	handlerLength, hasHandlerLength := handlerContentLength(job.respHeader)
 	dst = append(dst, httpPrefix...)
 	dst = strconv.AppendInt(dst, int64(status), 10)
 	dst = append(dst, ' ')
@@ -511,7 +541,25 @@ func appendHTTPResponse(dst []byte, job *httpJob, status int, closeConn bool, se
 			dst = appendString(dst, value)
 		}
 	}
-	if status >= 200 && status != http.StatusNoContent {
+	switch {
+	case status < 200 || status == http.StatusNoContent:
+		// 1xx and 204 responses must not carry Content-Length.
+	case status == http.StatusNotModified:
+		if hasHandlerLength {
+			dst = append(dst, contentLengthPrefix...)
+			dst = strconv.AppendInt(dst, handlerLength, 10)
+		}
+	case head:
+		// A HEAD response describes the representation. Keep the handler's
+		// explicit length when it wrote no body, and never synthesize 0.
+		if len(job.body) > 0 {
+			dst = append(dst, contentLengthPrefix...)
+			dst = strconv.AppendInt(dst, int64(len(job.body)), 10)
+		} else if hasHandlerLength {
+			dst = append(dst, contentLengthPrefix...)
+			dst = strconv.AppendInt(dst, handlerLength, 10)
+		}
+	default:
 		dst = append(dst, contentLengthPrefix...)
 		dst = strconv.AppendInt(dst, int64(len(job.body)), 10)
 	}

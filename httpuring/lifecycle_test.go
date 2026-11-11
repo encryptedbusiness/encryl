@@ -4,6 +4,10 @@ package httpuring
 
 import (
 	"bytes"
+	"io"
+	"net"
+	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -199,6 +203,23 @@ func TestSlotTableReclaimsChunks(t *testing.T) {
 	}
 }
 
+func TestSlotChunksInitializeUnusedDescriptors(t *testing.T) {
+	var slots slotTable
+	id, c := slots.alloc(5)
+	if c.fd != 5 {
+		t.Fatalf("allocated fd = %d", c.fd)
+	}
+	for i := range slots.chunks[0] {
+		if uint32(i) == id {
+			continue
+		}
+		if fd := slots.chunks[0][i].fd; fd != -1 {
+			t.Fatalf("unused slot %d has fd %d", i, fd)
+		}
+	}
+	slots.release(id)
+}
+
 func TestAcceptResourceErrorsBackOff(t *testing.T) {
 	f := &fastLoop{start: time.Now()}
 	f.now = 10
@@ -214,6 +235,112 @@ func TestAcceptResourceErrorsBackOff(t *testing.T) {
 	f.handleAcceptError(unix.ECONNABORTED)
 	if f.acceptRetryAt != 0 {
 		t.Fatalf("transient accept error left retryAt=%d", f.acceptRetryAt)
+	}
+
+	f.acceptBackoff = 0
+	f.now = 30
+	f.handleAcceptError(unix.EPERM)
+	if f.stop.Load() || f.acceptBackoff != 100 || f.acceptRetryAt != 130 {
+		t.Fatalf("EPERM stopped=%v backoff=%d retryAt=%d", f.stop.Load(), f.acceptBackoff, f.acceptRetryAt)
+	}
+	f.handleAcceptError(unix.ECONNRESET)
+	if f.stop.Load() || f.acceptRetryAt == 0 {
+		t.Fatalf("pending network error stopped=%v retryAt=%d", f.stop.Load(), f.acceptRetryAt)
+	}
+	f.handleAcceptError(unix.EBADF)
+	if !f.stop.Load() {
+		t.Fatal("listener-gone error did not stop the loop")
+	}
+}
+
+func TestCloseDefersSlotUntilPollCompletion(t *testing.T) {
+	f, c, _, _ := newArenaLoop(t, 64, 1)
+	id, gen := c.id, c.gen
+	c.set(flagPoll)
+
+	f.closeConn(c)
+	if f.slots.live != 1 {
+		t.Fatalf("slot released with a poll outstanding: live=%d", f.slots.live)
+	}
+	f.handlePoll(id, gen, int32(unix.POLLHUP))
+	if f.slots.live != 0 {
+		t.Fatalf("slot not released after poll completion: live=%d", f.slots.live)
+	}
+}
+
+func TestTryReleaseWaitsForDescriptorClose(t *testing.T) {
+	f, c, _, _ := newArenaLoop(t, 64, 1)
+	c.clear(flagLive)
+	c.fd = 7
+	f.tryRelease(c, c.gen)
+	if f.slots.live != 1 {
+		t.Fatalf("released with an open descriptor: live=%d", f.slots.live)
+	}
+	c.fd = -1
+	f.tryRelease(c, c.gen)
+	if f.slots.live != 0 {
+		t.Fatalf("not released after descriptor close: live=%d", f.slots.live)
+	}
+}
+
+func TestCloseFlushesPreparedSend(t *testing.T) {
+	// The ring enforces SINGLE_ISSUER, so creation and submission must run on
+	// the same OS thread.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ring, err := uring.NewRing(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ring.QueueExit()
+	tx, err := uring.NewTXArena(64, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Close()
+	f := &fastLoop{server: &Server{MaxOutputBytes: 1 << 20}, ring: ring, tx: tx}
+
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, c := f.slots.alloc(fds[0])
+	c.txHeap = []byte("hello")
+	c.txLen = int32(len(c.txHeap))
+	f.submitSend(c)
+	if !c.has(flagSend) {
+		t.Fatal("send was not prepared")
+	}
+
+	// closeConn must submit the prepared send while the descriptor is still
+	// open, then close it.
+	f.closeConn(c)
+	if _, err := ring.SubmitAndWait(1); err != nil {
+		t.Fatal(err)
+	}
+	cqe, err := ring.PeekCQE()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cqe.Res != int32(len(c.txHeap)) {
+		t.Fatalf("prepared send completed with %d, want %d", cqe.Res, len(c.txHeap))
+	}
+	ring.CQESeen(cqe)
+
+	file := os.NewFile(uintptr(fds[1]), "peer")
+	peer, err := net.FileConn(file)
+	_ = file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	_ = peer.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, len("hello"))
+	if _, err := io.ReadFull(peer, buf); err != nil {
+		t.Fatal(err)
+	}
+	if string(buf) != "hello" {
+		t.Fatalf("peer received %q", buf)
 	}
 }
 
@@ -251,6 +378,8 @@ func TestCompleteHTTPReleasesSlotAfterClose(t *testing.T) {
 }
 
 func TestCloseAllDrainsInflightRecv(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ring, err := uring.NewRing(64)
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +420,7 @@ func TestCloseAllDrainsInflightRecv(t *testing.T) {
 		t.Fatalf("slot still live after shutdown: %d", f.slots.live)
 	}
 	if f.rx != nil || f.tx != nil {
-		t.Fatal("arenas not closed")
+		t.Fatalf("arenas not closed (ringBroken=%v)", f.ringBroken)
 	}
 }
 

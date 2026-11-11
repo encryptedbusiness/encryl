@@ -23,7 +23,7 @@ func NewRing(entries uint32) (*giouring.Ring, error) {
 		cqEntries = 16384
 	}
 	flags := uint32(giouring.SetupSingleIssuer | giouring.SetupRDisabled |
-		giouring.SetupCoopTaskrun | giouring.SetupDeferTaskrun)
+		giouring.SetupCoopTaskrun | giouring.SetupDeferTaskrun | giouring.SetupClamp)
 	// R_DISABLED is mandatory for restrictions: an enabled ring rejects
 	// IORING_REGISTER_RESTRICTIONS with EBADFD.
 	if err := ring.QueueInitCQ(entries, cqEntries, flags); err != nil {

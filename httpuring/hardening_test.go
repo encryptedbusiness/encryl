@@ -604,3 +604,162 @@ func TestConcurrentKeepAliveIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHTTP10DefaultClose(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ok", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	})
+	srv := &Server{HTTPHandler: mux, HeaderTimeout: 2 * time.Second}
+	ln, cleanup := startTestServer(t, srv)
+	defer cleanup()
+	addr := ln.Addr().String()
+
+	// HTTP/1.0 closes by default.
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.WriteString(conn, "GET /ok HTTP/1.0\r\nHost: x\r\n\r\n")
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 || string(body) != "ok" || !resp.Close {
+		t.Fatalf("default: status=%d body=%q close=%v", resp.StatusCode, body, resp.Close)
+	}
+	var one [1]byte
+	if _, err := br.Read(one[:]); err == nil {
+		t.Fatal("HTTP/1.0 connection stayed open without keep-alive")
+	}
+	_ = conn.Close()
+
+	// An explicit keep-alive keeps the connection usable.
+	conn, err = net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, _ = io.WriteString(conn, "GET /ok HTTP/1.0\r\nHost: x\r\nConnection: keep-alive\r\n\r\n")
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	br = bufio.NewReader(conn)
+	for i := 0; i < 2; i++ {
+		resp, err = http.ReadResponse(br, nil)
+		if err != nil {
+			t.Fatalf("keep-alive response %d: %v", i, err)
+		}
+		body, _ = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.Close || string(body) != "ok" {
+			t.Fatalf("keep-alive response %d: close=%v body=%q", i, resp.Close, body)
+		}
+		if i == 0 {
+			_, _ = io.WriteString(conn, "GET /ok HTTP/1.0\r\nHost: x\r\nConnection: keep-alive\r\n\r\n")
+		}
+	}
+}
+
+func TestResponseContentLengthRules(t *testing.T) {
+	date := []byte("Wed, 11 Nov 2026 00:00:00 GMT")
+	raw := func(res *Response, head bool) []byte {
+		return appendResponse(nil, res, true, head, "srv", date)
+	}
+	adapted := func(method string, status int, header http.Header) []byte {
+		job := &httpJob{req: http.Request{Method: method}, respHeader: header}
+		return appendHTTPResponse(nil, job, status, false, "srv", date)
+	}
+	read := func(t *testing.T, out []byte, method string) (http.Header, string) {
+		t.Helper()
+		resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(out)), &http.Request{Method: method})
+		if err != nil {
+			t.Fatalf("read response %q: %v", out, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return resp.Header, string(body)
+	}
+	withLength := func(n string) http.Header {
+		h := make(http.Header)
+		h.Set("Content-Length", n)
+		return h
+	}
+
+	cases := []struct {
+		name   string
+		out    []byte
+		method string
+		length string
+		body   string
+	}{
+		{"raw-head-empty", raw(&Response{Status: 200}, true), "HEAD", "", ""},
+		{"raw-head-body", raw(&Response{Status: 200, Body: []byte("abc")}, true), "HEAD", "3", ""},
+		{"raw-304", raw(&Response{Status: 304, Body: []byte("abc")}, false), "GET", "", ""},
+		{"raw-204", raw(&Response{Status: 204, Body: []byte("abc")}, false), "GET", "", ""},
+		{"raw-get-empty", raw(&Response{Status: 200}, false), "GET", "0", ""},
+		{"adapter-head-empty", adapted("HEAD", 200, nil), "HEAD", "", ""},
+		{"adapter-head-handler-length", adapted("HEAD", 200, withLength("7")), "HEAD", "7", ""},
+		{"adapter-304", adapted("GET", 304, nil), "GET", "", ""},
+		{"adapter-304-handler-length", adapted("GET", 304, withLength("9")), "GET", "9", ""},
+		{"adapter-204", adapted("GET", 204, withLength("5")), "GET", "", ""},
+		{"adapter-get-empty", adapted("GET", 200, nil), "GET", "0", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			header, body := read(t, tc.out, tc.method)
+			if got := header.Get("Content-Length"); got != tc.length {
+				t.Fatalf("Content-Length = %q, want %q", got, tc.length)
+			}
+			if body != tc.body {
+				t.Fatalf("body = %q, want %q", body, tc.body)
+			}
+		})
+	}
+}
+
+func TestPanicClearsResponseHeaders(t *testing.T) {
+	modes := map[string]func(*http.ServeMux) *Server{
+		"inline": func(mux *http.ServeMux) *Server {
+			return &Server{HTTPHandler: mux, HeaderTimeout: 2 * time.Second}
+		},
+		"worker": func(mux *http.ServeMux) *Server {
+			return &Server{HTTPHandler: mux, Workers: 1, HeaderTimeout: 2 * time.Second}
+		},
+	}
+	for name, newServer := range modes {
+		t.Run(name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/boom", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Secret", "leak")
+				_, _ = w.Write([]byte("secret"))
+				panic("boom")
+			})
+			srv := newServer(mux)
+			ln, cleanup := startTestServer(t, srv)
+			defer cleanup()
+
+			conn, err := net.Dial("tcp", ln.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			_, _ = io.WriteString(conn, "GET /boom HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+			_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != 500 || len(body) != 0 {
+				t.Fatalf("status=%d body=%q", resp.StatusCode, body)
+			}
+			if got := resp.Header.Get("X-Secret"); got != "" {
+				t.Fatalf("panic leaked header %q", got)
+			}
+		})
+	}
+}

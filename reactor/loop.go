@@ -319,6 +319,43 @@ func (l *loop) Shutdown() error {
 func (l *loop) QueueLen() int { return l.cmd.Len() + l.attachRing.Len() }
 
 // Run owns the calling goroutine until ctx is cancelled or Shutdown is called.
+// ringFallbackSizes are tried, in order, when the requested ring cannot be
+// created. Ring size is a throughput tuning knob; a smaller ring still serves
+// correctly on kernels or sandboxes that reject large queues.
+var ringFallbackSizes = []uint32{8192, 4096, 1024, 256}
+
+// ringSizes returns the requested entries followed by strictly smaller
+// fallbacks. The list is deterministic and used by openRing.
+func ringSizes(entries uint32) []uint32 {
+	out := make([]uint32, 0, len(ringFallbackSizes)+1)
+	out = append(out, entries)
+	for _, n := range ringFallbackSizes {
+		if n < entries {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// openRing creates the largest ring this kernel accepts, falling back to
+// smaller queues when a large one is rejected (EINVAL/ENOMEM/EPERM).
+func openRing(entries uint32, logf func(string, ...any)) (*giouring.Ring, error) {
+	var firstErr error
+	for i, n := range ringSizes(entries) {
+		ring, err := uring.NewRing(n)
+		if err == nil {
+			if i > 0 && logf != nil {
+				logf("reactor: ring size %d unavailable (%v); using %d", entries, firstErr, n)
+			}
+			return ring, nil
+		}
+		if i == 0 {
+			firstErr = err
+		}
+	}
+	return nil, firstErr
+}
+
 func (l *loop) Run(ctx context.Context) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -331,7 +368,7 @@ func (l *loop) Run(ctx context.Context) error {
 		}
 	}
 
-	ring, err := uring.NewRing(l.cfg.RingEntries)
+	ring, err := openRing(l.cfg.RingEntries, l.cfg.Logf)
 	if err != nil {
 		return err
 	}

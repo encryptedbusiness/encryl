@@ -151,7 +151,7 @@ func BenchmarkParseJSON(b *testing.B) {
 	if !ok {
 		b.Fatal("rx buffer")
 	}
-	c := &fastConn{id: 1, gen: 1, flags: flagLive, rxBid: bid, txBid: noBid}
+	c := &fastConn{fd: -1, id: 1, gen: 1, flags: flagLive, rxBid: bid, txBid: noBid, hdrEnd: -1}
 	req := []byte("GET /json HTTP/1.1\r\nHost: server\r\nConnection: keep-alive\r\n\r\n")
 	copy(rx.Bytes(bid), req)
 	c.rxEnd = int32(len(req))
@@ -166,6 +166,10 @@ func BenchmarkParseJSON(b *testing.B) {
 		c.flags = flagLive
 		c.txOff, c.txLen = 0, 0
 		c.txHeap = nil
+		c.scanOff = 0
+		c.hdrEnd = -1
+		c.hdrLen = 0
+		c.hdrBits = 0
 		if c.txBid >= 0 {
 			tx.Release(c.txBid, c.id, c.gen)
 			c.txBid = noBid

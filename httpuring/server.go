@@ -355,6 +355,7 @@ type fastLoop struct {
 	acceptPending int
 	acceptRetryAt uint64
 	acceptBackoff uint64
+	ringBroken    bool
 	stop          atomic.Bool
 	wakeFD        int
 	wakeArmed     bool
@@ -440,6 +441,7 @@ func (t *slotTable) alloc(fd int) (uint32, *fastConn) {
 		for uint32(len(t.chunks))*slotChunk <= id {
 			ch := make([]fastConn, slotChunk)
 			for i := range ch {
+				ch[i].fd = -1
 				ch[i].rxBid = noBid
 				ch[i].txBid = noBid
 				ch[i].hdrEnd = -1
@@ -567,9 +569,16 @@ func (f *fastLoop) handleAcceptError(err unix.Errno) {
 		// The pending connection vanished; accept the next one right away.
 		f.acceptRetryAt = 0
 		f.submitAccept()
-	case unix.EMFILE, unix.ENFILE, unix.ENOBUFS, unix.ENOMEM:
-		// Descriptor or memory exhaustion. Back off; the main loop re-arms
-		// accepts once the retry deadline passes, so exhaustion cannot spin.
+	case unix.EMFILE, unix.ENFILE, unix.ENOBUFS, unix.ENOMEM, unix.EPERM,
+		// Linux passes already-pending network errors from the new socket
+		// through accept(). Retry them with backoff instead of stopping the
+		// loop or spinning while the condition persists.
+		unix.ECONNRESET, unix.EPROTO, unix.ENETDOWN, unix.ENETUNREACH,
+		unix.EHOSTDOWN, unix.EHOSTUNREACH, unix.ENONET, unix.ENOPROTOOPT,
+		unix.EOPNOTSUPP, unix.ETIMEDOUT, unix.ENOSR, unix.ESOCKTNOSUPPORT,
+		unix.EPROTONOSUPPORT:
+		// Descriptor, memory, or network exhaustion. Back off; the main
+		// loop re-arms accepts once the retry deadline passes.
 		now := f.now
 		if now == 0 {
 			now = uint64(time.Since(f.start).Milliseconds())
@@ -1249,7 +1258,12 @@ func (f *fastLoop) tryRelease(c *fastConn, gen uint32) {
 	if c == nil || c.gen != gen {
 		return
 	}
-	if c.has(flagLive | flagRecv | flagSend | flagHTTPPending) {
+	if c.has(flagLive | flagRecv | flagSend | flagPoll | flagHTTPPending) {
+		return
+	}
+	if c.fd >= 0 {
+		// The descriptor is closed before a slot becomes releasable; a live
+		// fd here means a failed close is waiting for shutdown teardown.
 		return
 	}
 	f.slots.release(c.id)
@@ -1262,9 +1276,24 @@ func (f *fastLoop) closeConn(c *fastConn) {
 	c.clear(flagLive)
 	f.disarmAll(c)
 	if c.fd >= 0 {
-		if c.has(flagRecv | flagSend) {
-			// Wake a blocked receive or send so its completion arrives and
-			// the buffer can be released safely.
+		if f.ringBroken {
+			// Leave the descriptor open for shutdown teardown; submitting
+			// again could resolve a queued SQE after the fd is reused.
+			return
+		}
+		// Flush prepared SQEs before closing. io_uring resolves descriptors
+		// at submission time and holds a file reference afterwards, so a
+		// deferred send/recv/poll cannot target a reused descriptor number.
+		if f.ring != nil {
+			if _, err := f.ring.Submit(); err != nil {
+				f.ringBroken = true
+				f.stop.Store(true)
+				return
+			}
+		}
+		if c.has(flagRecv | flagSend | flagPoll) {
+			// Wake a blocked receive, send, or poll so its completion arrives
+			// and the buffer/slot can be released safely.
 			_ = unix.Shutdown(int(c.fd), unix.SHUT_RDWR)
 		}
 		_ = unix.Close(int(c.fd))
@@ -1277,15 +1306,21 @@ func (f *fastLoop) closeConn(c *fastConn) {
 
 func (f *fastLoop) closeAll() {
 	f.stop.Store(true)
+	if f.ring != nil && !f.ringBroken {
+		// Submit prepared operations while every descriptor is still open.
+		if _, err := f.ring.Submit(); err != nil {
+			f.ringBroken = true
+		}
+	}
 	for _, ch := range f.slots.chunks {
 		for i := range ch {
 			c := &ch[i]
-			if !c.has(flagLive) {
+			if !c.has(flagLive) && c.fd < 0 {
 				continue
 			}
 			f.disarmAll(c)
 			if c.fd >= 0 {
-				if c.has(flagRecv | flagSend) {
+				if c.has(flagRecv | flagSend | flagPoll) {
 					_ = unix.Shutdown(int(c.fd), unix.SHUT_RDWR)
 				}
 				_ = unix.Close(int(c.fd))
@@ -1294,10 +1329,20 @@ func (f *fastLoop) closeAll() {
 			c.clear(flagLive)
 		}
 	}
-	// Reap outstanding receives and sends before unmapping the arenas they
-	// point into; the kernel may still read or write that memory.
-	f.drainInflight()
+	if f.ringBroken {
+		// Never submit or unmap after a failed flush; ring teardown owns the
+		// outstanding operations and memory.
+		f.slots = slotTable{}
+		return
+	}
+	// Reap outstanding receives, sends, and polls before unmapping the
+	// arenas. If the deadline expires, keep the arenas mapped: the ring is
+	// torn down afterwards and may still reference that memory.
+	drained := f.drainInflight()
 	f.slots = slotTable{}
+	if !drained {
+		return
+	}
 	if f.rx != nil {
 		_ = f.rx.Close()
 		f.rx = nil
@@ -1308,17 +1353,17 @@ func (f *fastLoop) closeAll() {
 	}
 }
 
-func (f *fastLoop) drainInflight() {
+func (f *fastLoop) drainInflight() bool {
 	if f.ring == nil {
-		return
+		return true
 	}
 	deadline := time.Now().Add(250 * time.Millisecond)
-	ts := syscall.NsecToTimespec(int64(time.Millisecond) * int64(time.Millisecond))
+	ts := syscall.NsecToTimespec(int64(time.Millisecond))
 	for time.Now().Before(deadline) {
 		pending := false
 		for _, ch := range f.slots.chunks {
 			for i := range ch {
-				if ch[i].has(flagRecv | flagSend) {
+				if ch[i].has(flagRecv | flagSend | flagPoll) {
 					pending = true
 					break
 				}
@@ -1328,16 +1373,17 @@ func (f *fastLoop) drainInflight() {
 			}
 		}
 		if !pending {
-			return
+			return true
 		}
 		if _, err := f.ring.SubmitAndWaitTimeout(1, &ts, nil); err != nil {
 			if errors.Is(err, unix.ETIME) || errors.Is(err, unix.EINTR) {
 				continue
 			}
-			return
+			return false
 		}
 		f.processCQEs()
 	}
+	return false
 }
 
 func (f *fastLoop) maxOut() int {
@@ -1571,7 +1617,9 @@ func (f *fastLoop) parse(c *fastConn) (consumed int, need bool, ok bool) {
 		} else {
 			query = nil
 		}
-		f.dispatchHTTP(c, method, target, path, query, proto, data[headerStart:headerStop], body, contentLength, closeConn)
+		// HTTP/1.0 closes by default unless the request opted into keep-alive.
+		httpClose := closeConn || (!protoHTTP11(proto) && !keepAlive)
+		f.dispatchHTTP(c, method, target, path, query, proto, data[headerStart:headerStop], body, contentLength, httpClose)
 		return bodyStart + contentLength, false, true
 	}
 
@@ -1818,9 +1866,20 @@ func appendResponse(dst []byte, res *Response, keep, head bool, serverHeader str
 	dst = append(dst, date...)
 	dst = append(dst, contentTypePrefix...)
 	dst = appendSanitizedValue(dst, res.ContentType)
-	if code >= 200 && code != 204 {
-		// A HEAD response and a 304 carry the length of the selected
-		// representation; a 1xx or 204 response must not carry one.
+	switch {
+	case code < 200 || code == 204:
+		// 1xx and 204 responses must not carry Content-Length.
+	case code == 304:
+		// Raw responses cannot supply a representation length, and 304 must
+		// not get a synthesized Content-Length.
+	case head:
+		// Keep the representation length for HEAD only when a body was set.
+		// An empty HEAD body must not become Content-Length: 0.
+		if len(res.Body) > 0 {
+			dst = append(dst, contentLengthPrefix...)
+			dst = strconv.AppendInt(dst, int64(len(res.Body)), 10)
+		}
+	default:
 		dst = append(dst, contentLengthPrefix...)
 		dst = strconv.AppendInt(dst, int64(len(res.Body)), 10)
 	}

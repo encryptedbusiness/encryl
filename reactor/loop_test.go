@@ -55,6 +55,30 @@ func newIdleLoop(t *testing.T, mutate func(*LoopConfig)) *loop {
 	return lp
 }
 
+func TestRingSizesFallback(t *testing.T) {
+	cases := []struct {
+		entries uint32
+		want    []uint32
+	}{
+		{32768, []uint32{32768, 8192, 4096, 1024, 256}},
+		{8192, []uint32{8192, 4096, 1024, 256}},
+		{4096, []uint32{4096, 1024, 256}},
+		{256, []uint32{256}},
+		{64, []uint32{64}},
+	}
+	for _, tc := range cases {
+		got := ringSizes(tc.entries)
+		if len(got) != len(tc.want) {
+			t.Fatalf("ringSizes(%d) = %v, want %v", tc.entries, got, tc.want)
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Fatalf("ringSizes(%d) = %v, want %v", tc.entries, got, tc.want)
+			}
+		}
+	}
+}
+
 func TestExcludedRefIncludesLoop(t *testing.T) {
 	refs := []connection.Ref{{Loop: 0, Slot: 3, Gen: 7}}
 	if !excludedRef(refs, 0, 3, 7) {

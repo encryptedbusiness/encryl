@@ -1,11 +1,11 @@
 module github.com/encryptedbusiness/encryl/adapters
 
-go 1.26.0
+go 1.27.4
 
 require (
+	github.com/encryptedbusiness/encryl v0.0.0
 	github.com/gofiber/fiber/v3 v3.6.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/encryptedbusiness/encryl v0.0.0
 	github.com/valyala/fasthttp v1.76.0
 )
 
