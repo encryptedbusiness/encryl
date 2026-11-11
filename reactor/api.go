@@ -27,7 +27,9 @@ type LoopConfig struct {
 	BufferCount    int
 	TxBytes        int64
 	MaxConnections int
-	RingEntries    uint32
+	// RingEntries is the preferred submission queue depth. If the kernel
+	// rejects a ring of this size, Run retries with a smaller queue.
+	RingEntries uint32
 
 	// WriteQueueMessages and WriteQueueBytes bound each connection's outbound
 	// queue. Backpressure selects the full-queue behaviour.

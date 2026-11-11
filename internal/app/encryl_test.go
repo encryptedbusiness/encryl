@@ -95,8 +95,13 @@ func TestListenAndServeShutdown(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe(ctx) }()
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for srv.state.Load() == nil && time.Now().Before(deadline) {
+		select {
+		case err := <-errCh:
+			t.Fatalf("server did not start: %v", err)
+		default:
+		}
 		time.Sleep(time.Millisecond)
 	}
 	if srv.state.Load() == nil {

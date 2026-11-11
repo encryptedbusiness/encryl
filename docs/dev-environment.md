@@ -8,7 +8,7 @@
 | Virtualization | Lima 2.2.1, `vmType: vz` |
 | Guest | Ubuntu 24.04 LTS, kernel 6.8.0-147-generic |
 | Guest resources | 8 vCPU, 15.6 GiB usable, 40 GiB disk |
-| Go | go1.27.2 linux/arm64 |
+| Go | go1.27.4 linux/arm64 |
 | Verified commits | `752e3ac..07f2ebe` on `v2` |
 | Log | [`docs/m0-execution-log.md`](m0-execution-log.md) |
 
@@ -39,7 +39,7 @@ against stubs, and `New` panics with a message that names the host.
 
 ## macOS (day-to-day)
 
-Requirements: Go 1.26 or newer (the repository pins toolchain 1.27.2 in
+Requirements: Go 1.27.4 or newer (the repository pins toolchain 1.27.4 in
 `go.mod`; `golang.org/x/sys` requires 1.26), optionally `golangci-lint` v1.62.
 
 ```bash
@@ -80,7 +80,7 @@ Two ordering details that cost time when missed:
 `deploy/lima.yaml` provisions Ubuntu 24.04 with:
 
 - kernel 6.8 (above the 6.6 floor)
-- Go 1.27.2
+- Go 1.27.4
 - connection-density sysctls from `docs/operations.md`
 - `nofile` raised to 1048576
 

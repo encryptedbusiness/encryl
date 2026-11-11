@@ -41,7 +41,9 @@ jobs:
           } | tee preflight.txt
 
       - name: microbenchmarks
-        run: go test -run=NONE -bench=. -benchmem -count=6 ./... > bench-new.txt
+        run: |
+          ulimit -l unlimited 2>/dev/null || sudo -n prlimit --pid $$ --memlock=unlimited:unlimited || echo "warning: could not raise RLIMIT_MEMLOCK"
+          go test -run=NONE -bench=. -benchmem -count=6 ./... > bench-new.txt
 
       - name: compare to stored baseline
         run: |

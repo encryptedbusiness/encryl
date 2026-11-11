@@ -1,13 +1,13 @@
 module github.com/encryptedbusiness/encryl/bench/http
 
-go 1.26.0
+go 1.27.4
 
 require (
+	github.com/encryptedbusiness/encryl v0.0.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/goccy/go-json v0.10.5
 	github.com/gofiber/fiber/v3 v3.1.0
 	github.com/mailru/easyjson v0.9.0
-	github.com/encryptedbusiness/encryl v0.0.0
 	github.com/valyala/fasthttp v1.69.0
 )
 

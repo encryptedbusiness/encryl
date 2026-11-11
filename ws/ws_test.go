@@ -334,7 +334,7 @@ func TestSingleFrameDoesNotAllocate(t *testing.T) {
 	h := func(Event) error { return nil }
 
 	buf := make([]byte, len(wire))
-	p.Feed(wire, h)
+	_ = p.Feed(wire, h)
 	allocs := testing.AllocsPerRun(1000, func() {
 		copy(buf, wire)
 		p.Reset()

@@ -55,6 +55,30 @@ func newIdleLoop(t *testing.T, mutate func(*LoopConfig)) *loop {
 	return lp
 }
 
+func TestRingSizesFallback(t *testing.T) {
+	cases := []struct {
+		entries uint32
+		want    []uint32
+	}{
+		{32768, []uint32{32768, 8192, 4096, 1024, 256, 64}},
+		{8192, []uint32{8192, 4096, 1024, 256, 64}},
+		{4096, []uint32{4096, 1024, 256, 64}},
+		{256, []uint32{256, 64}},
+		{64, []uint32{64}},
+	}
+	for _, tc := range cases {
+		got := ringSizes(tc.entries)
+		if len(got) != len(tc.want) {
+			t.Fatalf("ringSizes(%d) = %v, want %v", tc.entries, got, tc.want)
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Fatalf("ringSizes(%d) = %v, want %v", tc.entries, got, tc.want)
+			}
+		}
+	}
+}
+
 func TestExcludedRefIncludesLoop(t *testing.T) {
 	refs := []connection.Ref{{Loop: 0, Slot: 3, Gen: 7}}
 	if !excludedRef(refs, 0, 3, 7) {
@@ -340,7 +364,7 @@ func TestBufferExhaustionParks(t *testing.T) {
 		cancel()
 		_ = l.Shutdown()
 		select {
-		case <-done:
+		case <-done: //nolint:errcheck // wait for l.Run to return; the error is not asserted here
 		case <-time.After(3 * time.Second):
 			t.Error("loop did not stop")
 		}
@@ -408,7 +432,7 @@ func TestIdleTimeoutCloses(t *testing.T) {
 		cancel()
 		_ = l.Shutdown()
 		select {
-		case <-done:
+		case <-done: //nolint:errcheck // wait for l.Run to return; the error is not asserted here
 		case <-time.After(3 * time.Second):
 			t.Error("loop did not stop")
 		}

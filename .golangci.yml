@@ -1,5 +1,6 @@
+version: "2"
+
 run:
-  timeout: 5m
   tests: true
 
 linters:
@@ -12,21 +13,41 @@ linters:
     - errorlint
     - misspell
     - unconvert
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # The spikes are throwaway kernel experiments, not shipped code. They use
+      # syscall-level APIs deliberately and are gated by the kernel CI job.
+      - linters:
+          - errcheck
+        path: internal/spike/
+      - linters:
+          - errcheck
+        path: bench/loadgen/
+    # The vendored liburing port mirrors upstream C and is not held to the
+    # project's Go style rules.
+    paths:
+      - uring/giouring
+      - third_party/
+      - builtin/
+      - examples/
 
 issues:
-  exclude-dirs:
-    - internal/uring/giouring
-  exclude-rules:
-    # The spikes are throwaway kernel experiments, not shipped code. They use
-    # syscall-level APIs deliberately and are gated by the kernel CI job.
-    - path: internal/spike/
-      linters:
-        - errcheck
-    - path: bench/loadgen/
-      linters:
-        - errcheck
   max-issues-per-linter: 0
   max-same-issues: 0
+
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party/
+      - builtin/
+      - examples/
 
 # Note: gosec is deliberately not enabled yet. It flags the intentional
 # unsafe.Pointer use in internal/ktls (the kernel crypto_info struct) and needs

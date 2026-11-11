@@ -66,7 +66,7 @@ func (c *Conn) sendFrameLocal(f *connection.Frame) error {
 		return err
 	}
 	st := c.srv.state.Load()
-	if st == nil || c.loop < 0 || int(c.loop) >= len(st.loops) || st.loops[c.loop] == nil {
+	if st == nil || int(c.loop) >= len(st.loops) || st.loops[c.loop] == nil {
 		c.acct.Release(f.Cost)
 		f.Release()
 		return ErrClosed
