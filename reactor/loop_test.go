@@ -364,7 +364,7 @@ func TestBufferExhaustionParks(t *testing.T) {
 		cancel()
 		_ = l.Shutdown()
 		select {
-		case <-done:
+		case <-done: //nolint:errcheck // wait for l.Run to return; the error is not asserted here
 		case <-time.After(3 * time.Second):
 			t.Error("loop did not stop")
 		}
@@ -432,7 +432,7 @@ func TestIdleTimeoutCloses(t *testing.T) {
 		cancel()
 		_ = l.Shutdown()
 		select {
-		case <-done:
+		case <-done: //nolint:errcheck // wait for l.Run to return; the error is not asserted here
 		case <-time.After(3 * time.Second):
 			t.Error("loop did not stop")
 		}

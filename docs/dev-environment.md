@@ -154,7 +154,6 @@ Kernel and tooling failures seen during M0 verification, with their real causes:
 | `link: invalid reference to syscall.munmap` | Using upstream giouring instead of the vendored copy | Import `uring/giouring` |
 | `undefined: syscall.EpollEvent` | Building v1 on macOS | Use the Linux target; v1 is Linux-only |
 | `operation not permitted` on ring setup | seccomp blocks io_uring | Use a VM, not a container |
-| `ring setup: cannot allocate memory` (`ENOMEM`) | io_uring rings are charged to the per-user `RLIMIT_MEMLOCK` quota; the default is often 8 MiB and is shared by parallel test processes | `ulimit -l unlimited` or `LimitMEMLOCK=infinity`; see `docs/operations.md` |
 | `RegisterRestrictions: file descriptor in bad state` (`EBADFD`) | Restrictions require a disabled ring | Create with `IORING_SETUP_R_DISABLED`, restrict, then `RegisterEnableRings` |
 | `SetupBufRing: permission denied` (`EPERM`) | Restrictions gate register opcodes too | Add the register op to the restriction allowlist |
 | `submit: file exists` (`EEXIST`) | `SINGLE_ISSUER` ring used from a different OS thread | Create and drive the ring in the same locked thread |

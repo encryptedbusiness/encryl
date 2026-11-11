@@ -33,7 +33,7 @@ func TestDecodeUserDataRejectsUnknownOp(t *testing.T) {
 func FuzzUserData(f *testing.F) {
 	f.Add(uint8(OpRecv), uint32(1), uint32(1))
 	f.Add(uint8(OpPoll), uint32(0), uint32(0))
-	f.Add(uint8(255), uint32(1<<24-1), uint32(^uint32(0)))
+	f.Add(uint8(255), uint32(1<<24-1), ^uint32(0))
 
 	f.Fuzz(func(t *testing.T, op uint8, slot, gen uint32) {
 		u := EncodeUserData(Op(op), slot, gen)

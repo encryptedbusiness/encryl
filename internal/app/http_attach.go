@@ -3,6 +3,7 @@
 package app
 
 import (
+	"errors"
 	"net/http"
 	"time"
 	"unsafe"
@@ -32,8 +33,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := upgradeHeadersFromNetHTTP(r)
 	spec, err := s.PrepareUpgrade(h)
 	if err != nil {
-		ue, ok := err.(*UpgradeError)
-		if !ok {
+		var ue *UpgradeError
+		if !errors.As(err, &ue) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -55,7 +56,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var buffered []byte
 	if n := rw.Reader.Buffered(); n > 0 {
-		if b, err := rw.Reader.Peek(n); err == nil {
+		if b, err := rw.Peek(n); err == nil {
 			buffered = make([]byte, len(b))
 			copy(buffered, b)
 		}

@@ -167,6 +167,7 @@ type Server struct {
 
 	defaultsOnce sync.Once
 	mu           sync.Mutex
+	closed       bool
 	loops        []*fastLoop
 	listens      []netio.Listener
 }
@@ -297,6 +298,10 @@ func (s *Server) Serve(ln netio.Listener) error {
 		}()
 	}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return net.ErrClosed
+	}
 	s.loops = append(s.loops, f)
 	s.listens = append(s.listens, ln)
 	s.mu.Unlock()
@@ -316,6 +321,11 @@ func (s *Server) Serve(ln netio.Listener) error {
 		}
 		s.mu.Unlock()
 	}()
+	if f.stop.Load() {
+		// Close raced with startup: stop before touching the listener
+		// descriptor, which Close may already have closed.
+		return net.ErrClosed
+	}
 	if !f.armWake() {
 		return fmt.Errorf("httpuring: wake submission failed")
 	}
@@ -508,6 +518,7 @@ func (f *fastLoop) slotFor(slot, gen uint32) *fastConn {
 // Close stops the loop and closes the listening socket.
 func (s *Server) Close() error {
 	s.mu.Lock()
+	s.closed = true
 	loops := append([]*fastLoop(nil), s.loops...)
 	listens := append([]netio.Listener(nil), s.listens...)
 	s.mu.Unlock()
@@ -1611,7 +1622,7 @@ func (f *fastLoop) parse(c *fastConn) (consumed int, need bool, ok bool) {
 			c.extra = &httpExtra{}
 		}
 		c.extra.httpConsumed = bodyStart + contentLength
-		query := target
+		var query []byte
 		if q := bytes.IndexByte(target, '?'); q >= 0 {
 			query = target[q+1:]
 		} else {

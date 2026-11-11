@@ -137,14 +137,14 @@ func TestServeHTTPRejectsBeforeHijack(t *testing.T) {
 	if err := srv.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	defer srv.Shutdown(context.Background())
+	defer func() { _ = srv.Shutdown(context.Background()) }()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	go http.Serve(ln, http.HandlerFunc(srv.ServeHTTP))
+	go func() { _ = http.Serve(ln, http.HandlerFunc(srv.ServeHTTP)) }()
 
 	resp, err := http.Get("http://" + ln.Addr().String() + "/ws")
 	if err != nil {

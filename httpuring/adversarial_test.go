@@ -179,15 +179,18 @@ func startTestServer(t *testing.T, srv *Server) (netio.Listener, func()) {
 		_ = ln.Close()
 		select {
 		case err := <-errCh:
+			if err == nil {
+				t.Fatal("server did not start")
+			}
 			t.Fatalf("server did not start: %v", err)
-		default:
+		case <-time.After(5 * time.Second):
+			t.Fatal("server did not start; Serve did not return after Close")
 		}
-		t.Fatal("server did not start")
 	}
 	cleanup := func() {
 		_ = srv.Close()
 		select {
-		case <-errCh:
+		case <-errCh: //nolint:errcheck // wait for Serve to return after Close
 		case <-time.After(5 * time.Second):
 			t.Fatal("Serve did not return after Close")
 		}
@@ -537,7 +540,7 @@ func newTXLoop(t *testing.T, blockBytes, blocks int) (*fastLoop, *fastConn, *uri
 	}
 	t.Cleanup(func() { _ = unix.Close(fds[0]); _ = unix.Close(fds[1]) })
 	f := &fastLoop{server: &Server{MaxOutputBytes: 1 << 20}, tx: tx}
-	_, c := f.slots.alloc(int(fds[0]))
+	_, c := f.slots.alloc(fds[0])
 	return f, c, tx
 }
 

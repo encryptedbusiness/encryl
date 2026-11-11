@@ -5,6 +5,7 @@ package app
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -133,17 +134,9 @@ func TestPrepareUpgradeZeroAlloc(t *testing.T) {
 }
 
 func asUpgradeError(err error, out **UpgradeError) bool {
-	ue, ok := err.(*UpgradeError)
-	if ok {
-		*out = ue
-	}
-	return ok
+	return errors.As(err, out)
 }
 
 func asRejectError(err error, out **upgrade.RejectError) bool {
-	rej, ok := err.(*upgrade.RejectError)
-	if ok {
-		*out = rej
-	}
-	return ok
+	return errors.As(err, out)
 }

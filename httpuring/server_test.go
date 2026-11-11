@@ -34,7 +34,7 @@ func TestRawServer(t *testing.T) {
 	go func() { errCh <- srv.Serve(ln) }()
 	defer func() {
 		_ = srv.Close()
-		<-errCh
+		<-errCh //nolint:errcheck // wait for Serve to return after Close
 	}()
 
 	base := "http://" + ln.Addr().String()
@@ -89,7 +89,7 @@ func TestRawServerPipeline(t *testing.T) {
 	go func() { errCh <- srv.Serve(ln) }()
 	defer func() {
 		_ = srv.Close()
-		<-errCh
+		<-errCh //nolint:errcheck // wait for Serve to return after Close
 	}()
 
 	conn, err := net.Dial("tcp", ln.Addr().String())
@@ -206,7 +206,7 @@ func TestHTTPServerRing(t *testing.T) {
 	go func() { errCh <- srv.Serve(ln) }()
 	defer func() {
 		_ = srv.Close()
-		<-errCh
+		<-errCh //nolint:errcheck // wait for Serve to return after Close
 	}()
 
 	base := "http://" + ln.Addr().String()
@@ -256,7 +256,7 @@ func TestRawServerHeaderTimeout(t *testing.T) {
 	go func() { errCh <- srv.Serve(ln) }()
 	defer func() {
 		_ = srv.Close()
-		<-errCh
+		<-errCh //nolint:errcheck // wait for Serve to return after Close
 	}()
 
 	conn, err := net.Dial("tcp", ln.Addr().String())
@@ -288,7 +288,7 @@ func TestRawServerIdleTimeout(t *testing.T) {
 	go func() { errCh <- srv.Serve(ln) }()
 	defer func() {
 		_ = srv.Close()
-		<-errCh
+		<-errCh //nolint:errcheck // wait for Serve to return after Close
 	}()
 
 	conn, err := net.Dial("tcp", ln.Addr().String())
@@ -324,7 +324,7 @@ func TestRawServerMaxConnections(t *testing.T) {
 	srv := &Server{Handler: mux, MaxConnections: 1, HeaderTimeout: time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
-	defer func() { _ = srv.Close(); <-errCh }()
+	defer func() { _ = srv.Close(); <-errCh }() //nolint:errcheck // wait for Serve to return after Close
 
 	c1, err := net.Dial("tcp", ln.Addr().String())
 	if err != nil {

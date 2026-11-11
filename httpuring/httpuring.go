@@ -150,7 +150,7 @@ func (l *Listener) run() {
 			return
 		}
 		if _, err := ring.SubmitAndWait(1); err != nil {
-			if err == unix.EINTR {
+			if errors.Is(err, unix.EINTR) {
 				continue
 			}
 			l.fail(fmt.Errorf("httpuring: submit: %w", err))
@@ -449,7 +449,7 @@ func (s *loop) handle(cqe *giouring.CompletionQueueEvent) {
 		switch {
 		case cqe.Res < 0:
 			err := errno(cqe.Res)
-			if r.conn.readExpired.Load() && err == net.ErrClosed {
+			if r.conn.readExpired.Load() && errors.Is(err, net.ErrClosed) {
 				err = os.ErrDeadlineExceeded
 			}
 			s.finish(r, 0, err)
@@ -468,7 +468,7 @@ func (s *loop) handle(cqe *giouring.CompletionQueueEvent) {
 		if cqe.Res <= 0 {
 			if cqe.Res < 0 {
 				err := errno(cqe.Res)
-				if r.conn.writeExpired.Load() && err == net.ErrClosed {
+				if r.conn.writeExpired.Load() && errors.Is(err, net.ErrClosed) {
 					err = os.ErrDeadlineExceeded
 				}
 				s.finish(r, r.n, err)

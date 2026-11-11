@@ -202,5 +202,5 @@ func runIdleChild(t *testing.T) {
 	}
 	time.Sleep(2 * time.Second)
 	_ = srv.Close()
-	<-errCh
+	<-errCh //nolint:errcheck // wait for Serve to return after Close
 }

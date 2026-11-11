@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -186,17 +187,17 @@ func TestBebopCompactFlagPaths(t *testing.T) {
 }
 
 func TestBebopMalformedInput(t *testing.T) {
-	if _, err := DecodeBebopCommands(nil, nil); err != ErrFraming {
+	if _, err := DecodeBebopCommands(nil, nil); !errors.Is(err, ErrFraming) {
 		t.Fatalf("empty = %v", err)
 	}
-	if _, err := DecodeBebopCommands([]byte{0x80}, nil); err != ErrFraming {
+	if _, err := DecodeBebopCommands([]byte{0x80}, nil); !errors.Is(err, ErrFraming) {
 		t.Fatalf("truncated varint = %v", err)
 	}
-	if _, err := DecodeBebopCommands([]byte{0x05, 0x01}, nil); err != ErrFraming {
+	if _, err := DecodeBebopCommands([]byte{0x05, 0x01}, nil); !errors.Is(err, ErrFraming) {
 		t.Fatalf("truncated body = %v", err)
 	}
 	// A valid frame prefix with a truncated command body.
-	if _, err := DecodeBebopCommands([]byte{0x02, 0x01, 0x02}, nil); err != ErrWire {
+	if _, err := DecodeBebopCommands([]byte{0x02, 0x01, 0x02}, nil); !errors.Is(err, ErrWire) {
 		t.Fatalf("truncated command = %v", err)
 	}
 }

@@ -23,21 +23,6 @@ Descriptor limits:
 ulimit -n 1048576
 ```
 
-Locked-memory limits: newer kernels charge each io_uring ring's pages to the
-per-user `RLIMIT_MEMLOCK` quota, and every process of that user shares the
-quota. The common 8 MiB default is not enough for several 32K-entry rings and
-shows up as `io_uring_setup` returning `ENOMEM`. Raise it for the service and
-for test runs:
-
-```ini
-# systemd unit
-LimitMEMLOCK=infinity
-```
-
-```bash
-ulimit -l unlimited
-```
-
 Memory sizing: an idle connection costs kernel socket memory (typically
 1.5–3 KiB, visible in `/proc/slabinfo` as `TCP` and `kmalloc-*`), one kernel
 io_uring poll request, and a small slab entry (target under 1 KiB process RSS).

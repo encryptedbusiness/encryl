@@ -545,7 +545,7 @@ func TestConcurrentServeDefaultsOnce(t *testing.T) {
 	_ = srv.Close()
 	for i := 0; i < 2; i++ {
 		select {
-		case <-errCh:
+		case <-errCh: //nolint:errcheck // wait for Serve to return after Close
 		case <-time.After(5 * time.Second):
 			t.Fatal("Serve did not return after Close")
 		}
@@ -579,12 +579,12 @@ func TestConcurrentKeepAliveIsolation(t *testing.T) {
 					len(body), body)
 				code, got, err := dialRead(t, ln.Addr().String(), raw)
 				if err != nil || code != 200 || got != body {
-					errCh <- fmt.Errorf("client %d round %d: code=%d body=%q err=%v", i, round, code, got, err)
+					errCh <- fmt.Errorf("client %d round %d: code=%d body=%q err=%w", i, round, code, got, err)
 					return
 				}
 				code, got, err = dialRead(t, ln.Addr().String(), "GET /pad HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 				if err != nil || code != 200 || got != string(pad) {
-					errCh <- fmt.Errorf("client %d round %d pad: code=%d len=%d err=%v", i, round, code, len(got), err)
+					errCh <- fmt.Errorf("client %d round %d pad: code=%d len=%d err=%w", i, round, code, len(got), err)
 					return
 				}
 			}

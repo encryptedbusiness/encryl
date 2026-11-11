@@ -21,15 +21,15 @@ func TestEventIDForNameMatchesWireHash(t *testing.T) {
 }
 
 func TestFacadeAliasesMatchImplementation(t *testing.T) {
-	if ErrClosed != app.ErrClosed ||
-		ErrBackpressure != app.ErrBackpressure ||
-		ErrSlowConsumer != app.ErrSlowConsumer ||
-		ErrPayloadTooLarge != app.ErrPayloadTooLarge ||
-		ErrUnauthorized != app.ErrUnauthorized ||
-		ErrRoomLimit != app.ErrRoomLimit ||
-		ErrUnsupported != app.ErrUnsupported ||
-		ErrAckTimeout != app.ErrAckTimeout ||
-		ErrInvalidUpgrade != app.ErrInvalidUpgrade {
+	if !errors.Is(ErrClosed, app.ErrClosed) ||
+		!errors.Is(ErrBackpressure, app.ErrBackpressure) ||
+		!errors.Is(ErrSlowConsumer, app.ErrSlowConsumer) ||
+		!errors.Is(ErrPayloadTooLarge, app.ErrPayloadTooLarge) ||
+		!errors.Is(ErrUnauthorized, app.ErrUnauthorized) ||
+		!errors.Is(ErrRoomLimit, app.ErrRoomLimit) ||
+		!errors.Is(ErrUnsupported, app.ErrUnsupported) ||
+		!errors.Is(ErrAckTimeout, app.ErrAckTimeout) ||
+		!errors.Is(ErrInvalidUpgrade, app.ErrInvalidUpgrade) {
 		t.Fatal("a facade error is not the implementation sentinel")
 	}
 

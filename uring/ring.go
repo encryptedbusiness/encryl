@@ -3,11 +3,9 @@
 package uring
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/encryptedbusiness/encryl/uring/giouring"
-	"golang.org/x/sys/unix"
 )
 
 // NewRing creates, restricts, and enables a single-issuer ring. It must run on
@@ -22,16 +20,11 @@ func NewRing(entries uint32) (*giouring.Ring, error) {
 	// most once, so this preserves headroom without inflating small fallback
 	// rings. The caller still owns the timer tick.
 	cqEntries := entries * 2
-	flags := uint32(giouring.SetupSingleIssuer | giouring.SetupRDisabled |
-		giouring.SetupCoopTaskrun | giouring.SetupDeferTaskrun | giouring.SetupClamp)
+	flags := giouring.SetupSingleIssuer | giouring.SetupRDisabled |
+		giouring.SetupCoopTaskrun | giouring.SetupDeferTaskrun | giouring.SetupClamp
 	// R_DISABLED is mandatory for restrictions: an enabled ring rejects
 	// IORING_REGISTER_RESTRICTIONS with EBADFD.
 	if err := ring.QueueInitCQ(entries, cqEntries, flags); err != nil {
-		if errors.Is(err, unix.ENOMEM) {
-			// Newer kernels charge ring pages to the per-user RLIMIT_MEMLOCK
-			// quota, shared by every process of that user.
-			return nil, fmt.Errorf("platform: ring setup: %w (raise RLIMIT_MEMLOCK: io_uring ring memory is charged per user)", err)
-		}
 		return nil, fmt.Errorf("platform: ring setup: %w", err)
 	}
 	if _, err := ring.RegisterRestrictions(Restrictions()); err != nil {
@@ -69,11 +62,11 @@ func Restrictions() []giouring.Restriction {
 	// Buffer selection and fixed-file flags are SQE flags, not opcodes.
 	out = append(out, giouring.Restriction{
 		OpCode:  uint16(giouring.RestrictionSQEFlagsAllowed),
-		OpFlags: uint8(giouring.SqeBufferSelect),
+		OpFlags: giouring.SqeBufferSelect,
 	})
 	out = append(out, giouring.Restriction{
 		OpCode:  uint16(giouring.RestrictionSQEFlagsAllowed),
-		OpFlags: uint8(giouring.SqeFixedFile),
+		OpFlags: giouring.SqeFixedFile,
 	})
 	// Restrictions gate register operations too.
 	for _, reg := range []uint32{
