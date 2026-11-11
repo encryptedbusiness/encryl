@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/encryptedbusiness/encryl/netio"
+	"github.com/encryptedbusiness/encryl/uring"
 )
 
 func TestRawServer(t *testing.T) {
@@ -135,16 +136,40 @@ func BenchmarkParseJSON(b *testing.B) {
 		res.ContentType = benchmarkJSONType
 		res.Body = benchmarkJSONBody
 	})
-	f := &fastLoop{server: &Server{Handler: mux}, date: make([]byte, 0, 32)}
-	c := &fastConn{in: make([]byte, fastInSize), out: make([]byte, 0, fastOutSize), send: true}
+	rx, err := uring.NewRXArena(fastInSize, 1)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer rx.Close()
+	tx, err := uring.NewTXArena(fastInSize, fastInSize)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer tx.Close()
+	f := &fastLoop{server: &Server{Handler: mux}, date: make([]byte, 0, 32), rx: rx, tx: tx}
+	bid, ok := rx.Take()
+	if !ok {
+		b.Fatal("rx buffer")
+	}
+	c := &fastConn{id: 1, gen: 1, flags: flagLive, rxBid: bid, txBid: noBid}
 	req := []byte("GET /json HTTP/1.1\r\nHost: server\r\nConnection: keep-alive\r\n\r\n")
+	copy(rx.Bytes(bid), req)
+	c.rxEnd = int32(len(req))
+	if _, need, ok := f.parse(c); need || !ok {
+		b.Fatal(need, ok)
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		copy(c.in, req)
-		c.start, c.end = 0, len(req)
-		c.out, c.outOff = c.out[:0], 0
-		c.send = true
+		copy(rx.Bytes(bid), req)
+		c.rxStart, c.rxEnd = 0, int32(len(req))
+		c.flags = flagLive
+		c.txOff, c.txLen = 0, 0
+		c.txHeap = nil
+		if c.txBid >= 0 {
+			tx.Release(c.txBid, c.id, c.gen)
+			c.txBid = noBid
+		}
 		if _, need, ok := f.parse(c); need || !ok {
 			b.Fatal(need, ok)
 		}

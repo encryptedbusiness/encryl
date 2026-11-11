@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,7 +21,9 @@ import (
 )
 
 type httpJob struct {
-	c *fastConn
+	c    *fastConn
+	gen  uint32
+	loop *fastLoop
 
 	req        http.Request
 	url        url.URL
@@ -77,49 +80,89 @@ func (w *httpResponseWriter) Flush() {}
 // from a worker goroutine.
 func (w *httpResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	j := w.job
-	if j == nil || j.c == nil || j.c.hijacked {
+	if j == nil || j.c == nil || j.loop == nil || j.c.gen != j.gen || j.c.has(flagHijacked) {
 		return nil, nil, errors.New("httpuring: connection already hijacked")
 	}
 	c := j.c
-	if c.loop == nil || c.loop.reqCh != nil {
+	f := j.loop
+	if f.reqCh != nil {
 		return nil, nil, errors.New("httpuring: hijack requires Workers=0")
 	}
-	c.loop.stopTimers(c)
-	extra := c.in[c.start+c.httpConsumed : c.end]
-	c.hijacked = true
-	delete(c.loop.conns, c.fd)
-	fd := c.fd
-	c.fd = -1
-	hc := &hijackConn{fd: fd, local: c.loop.ln.Addr(), remote: c.remote}
-	if len(extra) == 0 {
-		return hc, emptyHandoffRW, nil
+	if c.has(flagRecv | flagSend) {
+		// The ring still references a buffer for this connection; detaching
+		// it now would let the buffer be reused while the kernel owns it.
+		return nil, nil, errors.New("httpuring: hijack with I/O in flight")
 	}
-	br := bufio.NewReader(bytes.NewReader(extra))
+	var extra []byte
+	if c.rxBid >= 0 && c.extra != nil && f.rx != nil {
+		buf := f.rx.Bytes(c.rxBid)
+		lo := int(c.rxStart) + c.extra.httpConsumed
+		hi := int(c.rxEnd)
+		if lo >= 0 && hi <= len(buf) && hi > lo {
+			extra = make([]byte, hi-lo)
+			copy(extra, buf[lo:hi])
+		}
+	}
+	fd := int(c.fd)
+	remote := connAddr(c)
+	local := f.ln.Addr()
+	f.disarmAll(c)
+	c.fd = -1
+	c.set(flagHijacked)
+	c.clear(flagHTTPPending)
+	f.releaseRX(c)
+	f.releaseTX(c)
+	f.slots.release(c.id)
+	hc := &hijackConn{fd: fd, local: local, remote: remote}
+	br := bufio.NewReaderSize(bytes.NewReader(extra), len(extra))
+	if len(extra) > 0 {
+		if _, err := br.Peek(len(extra)); err != nil {
+			_ = hc.Close()
+			return nil, nil, err
+		}
+	}
 	bw := bufio.NewWriter(io.Discard)
 	return hc, bufio.NewReadWriter(br, bw), nil
 }
 
-var emptyHandoffRW = bufio.NewReadWriter(
-	bufio.NewReader(bytes.NewReader(nil)),
-	bufio.NewWriter(io.Discard),
+func connAddr(c *fastConn) net.Addr {
+	if c == nil || c.addrLen == 0 {
+		return nil
+	}
+	ip := make(net.IP, c.addrLen)
+	copy(ip, c.addr[:c.addrLen])
+	return &net.TCPAddr{IP: ip, Port: int(c.port)}
+}
+
+var (
+	_ net.Conn = (*hijackConn)(nil)
 )
 
 type hijackConn struct {
 	fd     int
 	local  net.Addr
-	remote string
+	remote net.Addr
+	closed atomic.Bool
 }
 
-func (c *hijackConn) Read([]byte) (int, error)         { return 0, io.ErrClosedPipe }
-func (c *hijackConn) Write([]byte) (int, error)        { return 0, io.ErrClosedPipe }
-func (c *hijackConn) Close() error                     { return unix.Close(c.fd) }
+func (c *hijackConn) Read([]byte) (int, error)  { return 0, io.ErrClosedPipe }
+func (c *hijackConn) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+func (c *hijackConn) Close() error {
+	if c.closed.Swap(true) {
+		return nil
+	}
+	return unix.Close(c.fd)
+}
 func (c *hijackConn) LocalAddr() net.Addr              { return c.local }
-func (c *hijackConn) RemoteAddr() net.Addr             { return nil }
+func (c *hijackConn) RemoteAddr() net.Addr             { return c.remote }
 func (c *hijackConn) SetDeadline(time.Time) error      { return nil }
 func (c *hijackConn) SetReadDeadline(time.Time) error  { return nil }
 func (c *hijackConn) SetWriteDeadline(time.Time) error { return nil }
 
 func (c *hijackConn) SyscallConn() (syscall.RawConn, error) {
+	if c.closed.Load() {
+		return nil, net.ErrClosed
+	}
 	return &hijackRawConn{fd: c.fd}, nil
 }
 
@@ -151,9 +194,15 @@ func (p *httpJobPool) get() *httpJob {
 
 func (p *httpJobPool) put(j *httpJob) {
 	j.c = nil
+	j.gen = 0
+	j.loop = nil
 	j.status = 0
 	j.closeConn = false
-	j.body = j.body[:0]
+	if cap(j.body) > fastInSize {
+		j.body = nil
+	} else {
+		j.body = j.body[:0]
+	}
 	j.bodyRead.data = nil
 	j.bodyRead.off = 0
 	clear(j.reqHeader)
@@ -176,7 +225,15 @@ func (j *httpJob) prepare(c *fastConn, method, target, path, query, proto []byte
 	if len(query) > 0 {
 		j.url.RawQuery = string(query)
 	}
-	j.url.Path = string(path)
+	rawPath := string(path)
+	if decoded, err := url.PathUnescape(rawPath); err == nil {
+		j.url.Path = decoded
+		if decoded != rawPath {
+			j.url.RawPath = rawPath
+		}
+	} else {
+		j.url.Path = rawPath
+	}
 
 	major, minor := protoVersion(proto)
 	j.req = http.Request{
@@ -190,7 +247,7 @@ func (j *httpJob) prepare(c *fastConn, method, target, path, query, proto []byte
 		ContentLength: int64(contentLength),
 		Host:          string(headerHost(header)),
 		RequestURI:    string(target),
-		RemoteAddr:    c.remote,
+		RemoteAddr:    peerString(c),
 		Close:         closeConn,
 	}
 	if contentLength > 0 {
@@ -292,41 +349,64 @@ func trimSpace(b []byte) []byte {
 
 func (f *fastLoop) dispatchHTTP(c *fastConn, method, target, path, query, proto, header, body []byte, contentLength int, closeConn bool) {
 	job := f.jobs.get()
+	job.loop = f
+	job.gen = c.gen
 	job.prepare(c, method, target, path, query, proto, header, body, contentLength, closeConn)
+	if c.extra == nil {
+		c.extra = &httpExtra{}
+	}
+	c.extra.job = job
+	c.set(flagHTTPPending)
 	if f.reqCh == nil {
-		c.httpJob = job
-		c.httpPending = true
-		job.resetResponse()
-		f.server.HTTPHandler.ServeHTTP(&job.rw, &job.req)
-		f.completeHTTP(job)
-		return
-	}
-
-	c.httpJob = job
-	c.httpPending = true
-	select {
-	case f.reqCh <- job:
-	default:
-		c.httpPending = false
-		c.httpJob = nil
-		f.jobs.put(job)
-		f.close(c)
-	}
-}
-
-func (f *fastLoop) worker() {
-	for job := range f.reqCh {
 		job.resetResponse()
 		func() {
 			defer func() {
 				if recover() != nil {
 					job.status = http.StatusInternalServerError
+					job.body = job.body[:0]
 				}
 			}()
 			f.server.HTTPHandler.ServeHTTP(&job.rw, &job.req)
 		}()
-		f.respCh <- job
-		f.wake()
+		f.completeHTTP(job)
+		return
+	}
+	select {
+	case f.reqCh <- job:
+	default:
+		c.clear(flagHTTPPending)
+		c.extra.job = nil
+		f.dropExtra(c)
+		f.jobs.put(job)
+		f.closeConn(c)
+	}
+}
+
+func (f *fastLoop) worker() {
+	defer f.workers.Done()
+	for {
+		select {
+		case <-f.stopCh:
+			return
+		case job := <-f.reqCh:
+			job.resetResponse()
+			func() {
+				defer func() {
+					if recover() != nil {
+						job.status = http.StatusInternalServerError
+						job.body = job.body[:0]
+					}
+				}()
+				f.server.HTTPHandler.ServeHTTP(&job.rw, &job.req)
+			}()
+			select {
+			case f.respCh <- job:
+				f.wake()
+			case <-f.stopCh:
+				f.jobs.put(job)
+				return
+			}
+		}
 	}
 }
 
@@ -343,14 +423,17 @@ func (f *fastLoop) drainResponses() {
 
 func (f *fastLoop) completeHTTP(job *httpJob) {
 	c := job.c
-	if c == nil || c.httpJob != job {
+	if c == nil || c.gen != job.gen || c.extra == nil || c.extra.job != job {
 		f.jobs.put(job)
 		return
 	}
-	c.httpJob = nil
-	c.httpPending = false
-	if c.hijacked {
+	c.extra.job = nil
+	c.clear(flagHTTPPending)
+	if !c.has(flagLive) || c.has(flagHijacked) {
+		gen := job.gen
+		f.releaseRX(c)
 		f.jobs.put(job)
+		f.tryRelease(c, gen)
 		return
 	}
 
@@ -359,51 +442,85 @@ func (f *fastLoop) completeHTTP(job *httpJob) {
 		status = http.StatusOK
 	}
 	closeConn := job.closeConn || job.req.Close || headerClose(job.respHeader)
-	c.out = c.out[:0]
-	writeHTTPResponse(c, job, status, closeConn, f.server.ServerHeader, f.dateHeader())
-	c.closeAfter = closeConn
+	f.build = f.build[:0]
+	f.build = appendHTTPResponse(f.build, job, status, closeConn, f.serverHeader(), f.dateHeader())
+	if closeConn {
+		c.set(flagCloseAfter)
+	}
 	f.jobs.put(job)
-	f.submitSend(c)
+	gen := c.gen
+	f.beginSend(c, f.build)
+	f.trimBuild()
+	if c.gen == gen {
+		f.dropExtra(c)
+	}
 }
 
 func headerClose(h http.Header) bool {
-	return strings.EqualFold(h.Get("Connection"), "close")
+	for _, value := range h.Values("Connection") {
+		for _, tok := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(tok), "close") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
-func writeHTTPResponse(c *fastConn, job *httpJob, status int, closeConn bool, serverHeader string, date []byte) {
-	c.out = append(c.out, httpPrefix...)
-	c.out = strconv.AppendInt(c.out, int64(status), 10)
-	c.out = append(c.out, ' ')
-	c.out = append(c.out, statusText(status)...)
-	c.out = append(c.out, serverPrefix...)
+func appendHTTPResponse(dst []byte, job *httpJob, status int, closeConn bool, serverHeader string, date []byte) []byte {
+	if status < 100 || status > 999 {
+		status = http.StatusInternalServerError
+	}
+	head := job.req.Method == http.MethodHead
+	noBody := head || status < 200 || status == http.StatusNoContent || status == http.StatusNotModified
+	dst = append(dst, httpPrefix...)
+	dst = strconv.AppendInt(dst, int64(status), 10)
+	dst = append(dst, ' ')
+	dst = append(dst, statusText(status)...)
+	dst = append(dst, serverPrefix...)
 	if serverHeader == "" {
 		serverHeader = "httpuring"
 	}
-	c.out = appendString(c.out, serverHeader)
-	c.out = append(c.out, datePrefix...)
-	c.out = append(c.out, date...)
+	dst = appendSanitizedString(dst, serverHeader)
+	dst = append(dst, datePrefix...)
+	dst = append(dst, date...)
 
 	for key, values := range job.respHeader {
 		switch {
 		case strings.EqualFold(key, "Content-Length"),
 			strings.EqualFold(key, "Connection"),
 			strings.EqualFold(key, "Transfer-Encoding"),
+			strings.EqualFold(key, "Trailer"),
+			strings.EqualFold(key, "Upgrade"),
+			strings.EqualFold(key, "Keep-Alive"),
+			strings.EqualFold(key, "Proxy-Connection"),
 			strings.EqualFold(key, "Date"),
 			strings.EqualFold(key, "Server"):
 			continue
 		}
+		if !validHeaderName(key) {
+			continue
+		}
 		for _, value := range values {
-			c.out = appendString(c.out, "\r\n")
-			c.out = appendString(c.out, key)
-			c.out = appendString(c.out, ": ")
-			c.out = appendString(c.out, value)
+			if !validHeaderValue(value) {
+				continue
+			}
+			dst = appendString(dst, "\r\n")
+			dst = appendString(dst, key)
+			dst = appendString(dst, ": ")
+			dst = appendString(dst, value)
 		}
 	}
-	c.out = append(c.out, contentLengthPrefix...)
-	c.out = strconv.AppendInt(c.out, int64(len(job.body)), 10)
-	if closeConn {
-		c.out = append(c.out, closePrefix...)
+	if status >= 200 && status != http.StatusNoContent {
+		dst = append(dst, contentLengthPrefix...)
+		dst = strconv.AppendInt(dst, int64(len(job.body)), 10)
 	}
-	c.out = append(c.out, crlf...)
-	c.out = append(c.out, job.body...)
+	if closeConn {
+		dst = append(dst, closePrefix...)
+	}
+	dst = append(dst, crlf...)
+	if !noBody {
+		dst = append(dst, job.body...)
+	}
+	return dst
 }
