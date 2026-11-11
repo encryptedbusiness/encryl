@@ -5,6 +5,12 @@ name: kernel
 # profile, and the host kernel version is outside our support matrix. Register a
 # runner with the labels below, or point the workflow at a dedicated box.
 #
+# A missing runner does not fail fast: Actions queues the job until a matching
+# runner appears, which leaves pull-request checks pending forever. Gate the job
+# on the KERNEL_RUNNER repository variable so it is skipped until a runner is
+# online. Set Settings -> Secrets and variables -> Actions -> Variables ->
+# KERNEL_RUNNER=true once the runner with these labels is registered.
+#
 # The job fails closed: if the kernel does not meet the documented floor, the
 # test does not run and the job is red. That is deliberate — a skipped gate is
 # worse than a failed one.
@@ -30,6 +36,8 @@ permissions:
 
 jobs:
   preflight:
+    # Skip instead of queueing forever when no io-uring runner is registered.
+    if: vars.KERNEL_RUNNER == 'true'
     runs-on: [self-hosted, linux, io-uring]
     steps:
       - uses: actions/checkout@v4
